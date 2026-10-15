@@ -65,6 +65,25 @@ static int cell_q[32], n_cell_q;
 
 static const uint8_t *G(uint32_t off) { return gl_level + off; }
 
+/* REV6: the 32X picture in front of the Genesis' while the Genesis draws a level. 32X hardware
+ * manual, VDP bitmap mode register (0x4100) bit 7 PRI: 0 "MEGA Drive has priority" (what the
+ * game runs with - the Genesis display is off everywhere else), 1 "32X has priority"; a colour
+ * with the through bit (0x8000, our see-through 192) is shown on the other side: with PRI 1,
+ * behind the Genesis planes. REV4-REV6 ran levels with PRI 0: the Genesis planes in front, the
+ * see-through colour in front of them as black, the sprites behind them (on the console: black,
+ * with the level showing only inside Tux's and the snow's outlines). Game code, not the boot
+ * path's platform layer (port/ is checked by tools/check_boot.py). */
+#ifdef OJ32X_MARS
+static void front_32x(int on)
+{
+	volatile uint16_t *const dispmode = (volatile uint16_t *)0x20004100;
+	const uint16_t m = *dispmode;
+	*dispmode = on ? (uint16_t)(m | 0x0080) : (uint16_t)(m & ~0x0080);
+}
+#else
+static void front_32x(int on) { (void)on; }   /* the PC model composites with the 32X in front */
+#endif
+
 /* ---------------------------------------------------------------- the 32X: a sprite layer */
 #ifndef OJ32X_MARS
 #include <stdlib.h>
@@ -237,6 +256,7 @@ static void upload(int cx, int cy)
 	animate(game_ms, 1);
 	stream(cx, NCOLS);
 	scroll_to(cx, cy);
+	front_32x(1);                 /* REV6: the 32X in front, its through-bit colour behind the planes */
 	gen_vdp_reg(0x8174);               /* display on */
 	gl_on = 1;
 	gl_seen = gl_level;
@@ -250,6 +270,7 @@ static void off(void)
 	gen_vdp_reg(0x8407);
 	gen_vdp_reg(0x8554);
 	gen_vdp_reg(0x8D2B);
+	front_32x(0);                 /* REV6: the priority the rest of the game runs with */
 	gl_on = 0;
 	full_clear[0] = full_clear[1] = 1; /* the canvas goes back to the tiler */
 	yt_invalidate();
