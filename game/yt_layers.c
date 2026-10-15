@@ -22,6 +22,7 @@
 #include "yt.h"
 #include "types.h"          /* yatssd/types.h: tilemap_t, dtilelayer_t, drawtilelayerscmd_t */
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -40,6 +41,9 @@ void draw_setScissor(int16_t x, int16_t y, int16_t w, int16_t h);
 int draw_clip(int x, int y, int w, int h, rect_t *cliprect);
 void draw_handle_drawspritecmd(drawsprcmd_t *cmd);
 void plat_parallel(void (*fn)(void *, int), void *arg);   /* port/plat.h */
+bool plat_dma_ok(void);                                   /* port/plat.h; REV: game/yt_mars.c */
+void plat_dma_start(void *dst, const void *src, unsigned int bytes);
+void plat_dma_wait(void);
 
 static dtilelayer_t layer_desc[1];
 /* YATSSD's global_tilemap_id. Starts at an unlikely value (each buffer's record starts with 0,
@@ -133,12 +137,20 @@ static int ring_want = 1;                  /* OPTIONS - SCROLL (game: yt_set_rin
 static int full_frame;                     /* this frame redraws all of the view itself (yt_back) */
 static int top_h, top_v;                   /* this frame's anchor (top_v: CLASSIC only) */
 static int last_cells;                     /* cells drawn in the last frame (anchor_x: quiet?) */
+static int frame_shift;                    /* REV: this frame's re-anchor: 0 none, 1 moved, 2 left */
+static uint32_t frame_shift_us;            /* REV: ... and the move's microseconds */
+static int dma_want;                       /* REV: OPTIONS - DRAW <DMA> (yt_set_dma) */
+static int frame_dma_cells;                /* REV: cells the last frame drew through the DMA unit */
 static int16_t *rec = bands[0];            /* bands[cur] */
 static uint8_t *kp = kept[0];              /* kept[cur] */
 int plat_back_index(void);                 /* port/plat.h */
 
 void yt_set_ring(int on) { ring_want = on != 0; }
 void yt_full_frame(int on) { full_frame = on; }
+void yt_set_dma(int on) { dma_want = on != 0; }
+int yt_dma_state(void) { return !dma_want ? 0 : plat_dma_ok() ? 1 : 2; }
+int yt_frame_shift(uint32_t *us) { *us = frame_shift_us; return frame_shift; }
+int yt_frame_dma_cells(void) { return frame_dma_cells; }
 
 static int lines(void) { return ring ? YT_ROWS : CLASSIC_H; }
 static int nbands(void) { return ring ? NBANDS : CLASSIC_H / 8; }
@@ -232,6 +244,7 @@ static void reanchor(int dc, int dr)
 		for (int i = 0; i < NBANDS * NCOLS; i++)
 			if (kp[i]) { rec[i] = -1; kp[i] = 0; }
 		buf_epoch[cur]++;
+		frame_shift = 2;
 		return;
 	}
 	leaves_since_move[kind] = 0;
@@ -246,6 +259,8 @@ static void reanchor(int dc, int dr)
 	 * the view went sideways and up in the same frame) */
 	const uint32_t dt = plat_prof_us() - t0;
 	move_us[kind] = move_us[kind] ? (move_us[kind] * 3 + dt) / 4 : dt;
+	frame_shift = 1;
+	frame_shift_us = dt;
 	/* the record the same way: band (b, c) takes (b + 2 dr, c + dc); new ones unknown */
 	static int16_t old[NBANDS * NCOLS];
 	static uint8_t oldk[NBANDS * NCOLS];
@@ -293,6 +308,8 @@ void yt_begin(int cx, int cy)
 	rec = bands[cur];
 	kp = kept[cur];
 	ring = ring_want;
+	frame_shift = 0;
+	frame_shift_us = 0;
 	/* a new tile map, or the other scroll way: this buffer's record is void */
 	const int fresh = buf_map[cur] != (uint16_t)tm.id || buf_ring[cur] != ring;
 	if (fresh)
@@ -388,6 +405,98 @@ static void cells_job(void *arg, int which)
 	for (int i = which & 1; i < n; i += 2) draw_cell(&cell_list[i]);
 }
 
+/* ------------------------------------------------------------------ REV: OPTIONS - DRAW <DMA>
+ * The cells the tiler draws in a frame often come as ROWS: a row coming in at the top or the
+ * bottom (21 cells side by side), everything after a re-anchor that left the canvas in place,
+ * a new level. Such a row of adjacent cells is the same picture line after line, 16 pixels from
+ * each cell: the master composes one canvas line of the row in SDRAM (yt_dma_line) and the DMA
+ * unit copies it into the canvas while the master composes the next (game/yt_mars.c, the
+ * OpenTyrian addendum's "DMA for opaque lines"). Rows of fewer than DMA_RUN_MIN cells, and the
+ * single cells of a column coming in at the side, are drawn as before with Vic's pixel loop -
+ * by the slave while the master runs its rows, and by the master too when the rows are fewer
+ * cells than half of all (a split by count; the timing line shows which way the console likes).
+ * The pictures are the same either way: the PC's DMA is a memcpy, ST_TRUTH compares them. */
+#define DMA_RUN_MIN 3
+typedef struct { int16_t first, n; } CellRun;
+static CellRun runs[YT_MAX_CELLS];
+static int16_t singles[YT_MAX_CELLS];
+static int nruns, nsingles, master_singles;
+
+/* a cell the DMA rows can take: an unflipped picture, 4-byte aligned (stx_pack.py's blocks are) */
+static const uint8_t *row_px(const YtCell *c)
+{
+	const uint8_t *px = ((uint8_t **)tm.reslist)[c->idx >> 2];
+	return px && !(c->idx & 3) && !((uintptr_t)px & 3) ? px : 0;
+}
+
+/* the list (yt_layer: world rows top to bottom, columns left to right) into rows and singles;
+ * returns the cells in rows */
+static int dma_split(int n)
+{
+	nruns = nsingles = 0;
+	int in_rows = 0;
+	for (int i = 0; i < n; )
+	{
+		int j = i + 1;
+		if (row_px(&cell_list[i]))
+			while (j < n && cell_list[j].y == cell_list[i].y
+			       && cell_list[j].x == cell_list[j - 1].x + YT_TILE && row_px(&cell_list[j])) j++;
+		if (j - i >= DMA_RUN_MIN)
+		{
+			runs[nruns].first = (int16_t)i;
+			runs[nruns].n = (int16_t)(j - i);
+			nruns++;
+			in_rows += j - i;
+		}
+		else for (int k = i; k < j; k++) singles[nsingles++] = (int16_t)k;
+		i = j;
+	}
+	const int half = n / 2;
+	master_singles = in_rows < half ? half - in_rows : 0;
+	if (master_singles > nsingles) master_singles = nsingles;
+	return in_rows;
+}
+
+static void draw_rows(void)
+{
+	uint8_t *canvas = yt_canvas();
+	int slot = 0;
+	for (int r = 0; r < nruns; r++)
+	{
+		const YtCell *c0 = &cell_list[runs[r].first];
+		const int nc = runs[r].n;
+		const uint32_t *src[NCOLS];
+		for (int i = 0; i < nc; i++) src[i] = (const uint32_t *)row_px(&c0[i]);
+		for (int k = 0; k < YT_TILE; k++)
+		{
+			/* line k of every cell of the row, side by side (explicit words: no memcpy call) */
+			volatile uint32_t *d = (volatile uint32_t *)yt_dma_line(slot);
+			for (int i = 0; i < nc; i++, d += 4)
+			{
+				const uint32_t *p = src[i] + k * (YT_TILE / 4);
+				d[0] = p[0]; d[1] = p[1]; d[2] = p[2]; d[3] = p[3];
+			}
+			int l = c0->y + k;
+			if (l >= YT_ROWS) l -= YT_ROWS;          /* RING: the row starting at line 192 wraps */
+			/* waits for the line before (composed into the other buffer), then starts this one */
+			plat_dma_start(canvas + l * CANVAS_W + c0->x, yt_dma_line(slot), (unsigned)(nc * YT_TILE));
+			slot ^= 1;
+		}
+	}
+	plat_dma_wait();
+}
+
+static void dma_job(void *arg, int which)
+{
+	(void)arg;
+	if (which == 0)
+	{
+		draw_rows();
+		for (int i = 0; i < master_singles; i++) draw_cell(&cell_list[singles[i]]);
+	}
+	else for (int i = master_singles; i < nsingles; i++) draw_cell(&cell_list[singles[i]]);
+}
+
 /* the view's cells: world columns tx0..tx1, rows ty0..ty1 */
 static void view_cells(int *tx0, int *tx1, int *ty0, int *ty1)
 {
@@ -457,7 +566,9 @@ static int yt_layer(int layer)
 	CellsJob job;
 	job.n = n;
 	const uint32_t t0 = plat_prof_us();
+	frame_dma_cells = 0;
 	if (n <= YT_SOLO_CELLS) { cells_job(&job, 0); cells_job(&job, 1); }
+	else if (dma_want && (frame_dma_cells = dma_split(n)) > 0) plat_parallel(dma_job, 0);   /* REV */
 	else plat_parallel(cells_job, &job);
 	if (n >= 32)                       /* R7: what a cell costs (for reanchor's choice) */
 	{

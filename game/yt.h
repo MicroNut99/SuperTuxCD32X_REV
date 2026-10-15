@@ -123,6 +123,20 @@ uint8_t *yt_canvas(void);                     /* the canvas: frame buffer byte 0
 void yt_copy_row(uint8_t *dst, const uint8_t *src, int n);    /* into the canvas (same parity) */
 void yt_move_row(uint8_t *dst, const uint8_t *src, int n);    /* inside the canvas, 4-aligned */
 int16_t *yt_extrafb(void);                    /* Vic's extrafb in the back buffer */
+uint32_t *yt_dma_line(int i);                 /* REV: line buffer 0 / 1 the tiler composes into */
+
+/* REV, OPTIONS - DRAW: 1 = rows of new cells are composed a line at a time in SDRAM and copied
+ * into the canvas by the master's DMA unit while the next line is composed (the slave draws the
+ * other cells meanwhile); 0 = every cell with Vic's pixel loop (R11). yt_dma_state: 0 off,
+ * 1 on, 2 on but a transfer once failed - the CPU copies (port/plat.h plat_dma_ok). */
+void yt_set_dma(int on);
+int  yt_dma_state(void);
+/* REV: what the last yt_begin did to the canvas sideways / up-down (OPTIONS - TIMING WORST):
+ * 0 nothing, 1 moved it (*us: the move's microseconds), 2 left it in place (the cells that
+ * differ are drawn by the tiler instead - they show in its count) */
+int  yt_frame_shift(uint32_t *us);
+/* REV: the tiler's last frame: cells drawn in rows through the DMA unit */
+int  yt_frame_dma_cells(void);
 void yt_tile_counter_reset(void);             /* COMM6 = 0 (Vic's tile counter, master only) */
 
 #endif

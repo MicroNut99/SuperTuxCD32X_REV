@@ -1,8 +1,31 @@
-# SuperTux for Sega CD + 32X (SuperTux CD32X)
+# SuperTux CD32X REV – the rip and rebuild
+
+> **REV is a rip and rebuild.** SuperTuxCD32X (R1–R11) got the whole game running on the Sega CD32X.
+> REV takes that game apart and rebuilds how it draws, part by part, until it runs at the speed
+> Sega CD games reach on the same hardware: a steady 60 frames a second, with no catch when the
+> view scrolls. R11 is the starting point (commit `0a38bbf`: the R11 source, unchanged). It runs
+> at 45–60 frames a second on the console, with a hitch at every sideways shift of the picture
+> (every 48–64 pixels). Nothing in REV is kept because "it was there in R11": every part
+> of a frame is measured on the console (Options → Timing) and replaced if something faster
+> exists.
+>
+> **The boot path is not part of the rebuild.** The CD boot, the Sub-CPU commands and the 68000
+> listener (`cd32x/`, `port/`, `tools/make_oj_rom.py`, `make_boot_image.py`, `mars_boot.bin`)
+> stay byte for byte as proven; `tools/check_boot.py` stops the build otherwise. Everything REV
+> changes runs on the two SH2s: `game/`, the data tools and the build script.
+
+## REV rounds
+| Round | What was ripped out and what replaced it |
+|---|---|
+| REV1 | **The tiler's copying.** New rows of cells (a row coming in at the top or bottom, the redraw after a sideways shift, a new level) were copied cell by cell by the CPU; they can now be put together a line at a time in fast RAM and copied into the frame buffer by the master SH2's **DMA unit** while the next line is put together (*Options → Draw: DMA*; Draw: CPU is R11's way). **Timing: Worst** shows the slowest frame of the last 64 and what it spent its time on, including the sideways shift – the hitch the next rounds go after. |
+
+What REV1 has to show on the console, before the next round: see `docs/REV1_NOTES.md`.
+
+---
 
 SuperTux 0.1.3 ("Milestone 1", 2004 – the classic platformer with Tux) on the **Sega CD32X**,
 drawn with Victor Luchits' **YATSSD** tile renderer on the boot, cart and Sub-CPU layers of the
-Hurrican CD32X port. **Version R11.** The whole game runs from one CD: the title with its demo
+Hurrican CD32X port. **Version REV1 (from R11).** The whole game runs from one CD: the title with its demo
 level, Icyisland and both Bonus Islands with their world maps, all 76 levels, every bad guy and
 power-up, CD music, PCM sound effects, saving and high scores. The levels are kept in a 4 MB RAM
 cart once they have been read from the disc.
@@ -23,7 +46,10 @@ on the 32X: it looks and plays no better than on a PC, and the hardware forces s
 - **A 4MB RAM cart** (battery-backed), in the 32X cartridge slot – required
 - a 3- or 6-button pad
 
-Emulators: Kega Fusion cannot emulate the 4MB RAM cart, so the game does not run there. ares can.
+Emulators: **Kega Fusion** is the only emulator that boots a CD32X disc, and it cannot emulate
+the 4MB RAM cart: the game stops at the splash there. ares does not emulate the CD32X boot
+(it cannot start Night Trap CD32X either). REV is tested on the PC (`host/`: the pictures) and
+on real hardware (the timing).
 
 ## What you need
 | What | Where it goes |
@@ -42,7 +68,7 @@ libxmp-lite), and so are the sound effects, the pictures and the splash.
 1. The first run fetches SuperTux 0.1.3.
 2. The build converts the data, makes the splash, the sound effects and the CD tracks, checks
    the game on the PC (`host/`), builds the SH2 program, the loader and the Sub-CPU side.
-3. **Burn `cd32x/subcpu/SuperTuxR11.cue`** (with its `.bin`). It has the data track and the 12
+3. **Burn `cd32x/subcpu/SuperTuxREV1.cue`** (with its `.bin`). It has the data track and the 12
    music tracks.
 
 `DATA_ONLY=1 ./build.sh` stops after the data and the PC check (no Sega toolchain needed).
@@ -102,8 +128,10 @@ left/right changes a setting. *Options → Jump* swaps A and B (C/B jump, A runs
   stalactite, the flame, the fish, Spiky, the snowball, the bouncing and flying snowballs.
 - Animated tiles, snow and clouds, floating scores, broken bricks.
 - **Pause menu:** Continue, Restart Level, Options, Abort Level, Main Menu.
-- **Options:** music, lives for a new game, the background (fixed or moving), the timing line, the jump button, controls, the
-  story, high scores, credits (with a music player: left/right plays SuperTux's songs).
+- **Options:** music, lives for a new game, the timing line (off / on / worst), the jump button,
+  the background (fixed or moving), motion (smooth / steps), scroll (ring / classic), draw
+  (CPU / DMA), level select (from the title), controls, the story, high scores, credits (with a
+  music player: left/right plays SuperTux's songs).
 - CD music (SuperTux's 12 tracks), 20 sound effects on the Sega CD's PCM chip, high scores and
   saves in the Sega CD's backup RAM.
 
@@ -120,6 +148,21 @@ left/right changes a setting. *Options → Jump* swaps A and B (C/B jump, A runs
   during a level read.
 
 ## Frame rate
+### REV1: reading the timing line
+*Options → Timing* goes **Off → On → Worst** (left / right).
+- **On** (R4–R11): the average of 16 frames – `F` frames a second, then milliseconds a frame for
+  `L` the rules, `T` the tiles, `S` the sprites, `H` the panel, `W` waiting for the refresh, `N`
+  tiles drawn a frame.
+- **Worst** (REV1): the slowest frame of the last 64 (about a second), held on screen:
+  `X` its time before it could be shown (L + T + S + H; over 16.7 ms = a refresh was missed),
+  its `L T S H`, `M` what the sideways / up-down shift did in that frame (`M-` none, `M3.1` the
+  picture was moved and that took 3.1 ms, `ML` it was left in place and the cells that differ
+  were drawn – they are in `T` and `N`), `N` its cells and `D` how many of them went through
+  the DMA rows.
+- With the timing on, the second panel line ends in `D0` (Draw: CPU), `D1` (Draw: DMA) or `D!`
+  (a DMA transfer once never finished: the CPU copies from then on, until the console is
+  switched off).
+
 **Status: 38–56 frames per second** in Icyisland's first level, measured on real hardware with
 the timing line (*Options → Timing*). R2 ran at 17–22.
 
@@ -214,6 +257,7 @@ console.
 | R9 | Finding the stuck buttons: the timing panel counts pad replies that came back old (S); Options → Motion turns R6's smooth drawing off to compare. |
 | R10 | Options → Scroll RING: the picture wraps up and down, so the view never has to be shifted when Tux jumps; sideways shifts redraw only what differs and happen early on quiet frames; a strip of old picture (R4–R9) fixed. |
 | R11 | Options → Level Select (from the title): any of the 76 levels. |
+| **REV1** | The rip and rebuild starts (see the top). Options → Draw: DMA – rows of new cells copied by the SH2's DMA unit while the next line is put together. Options → Timing: Worst – the slowest frame and what its shift cost. |
 
 ## Files
 | Path | Contents |
@@ -231,7 +275,7 @@ console.
 | `tools/stx_convert.py`, `stx_pack.py` | SuperTux 0.1.3 → the 32X's data; the disc's files and the cart layout |
 | `tools/make_stx_sfx.py`, `make_stx_splash.py`, `stx_music.sh` | sound effects, the splash, the CD tracks |
 | `tools/check_boot.py`, `check_sdram_code.py`, `where.sh` | build checks; naming the addresses on a red exception screen |
-| `docs/` | developer notes: `STX_HANDOFF.md`, `R11_NOTES.md`, `R10_NOTES.md`, `R9_NOTES.md`, `R8_NOTES.md`, `R7_NOTES.md`, `R6_NOTES.md`, `R5_NOTES.md`, `R4_NOTES.md`, `R3_NOTES.md`, `R2_NOTES.md`, `R1B_NOTES.md`, `BOOT_PATH_NOTES.md` |
+| `docs/` | developer notes: `REV1_NOTES.md`, `STX_HANDOFF.md`, `R11_NOTES.md`, `R10_NOTES.md`, `R9_NOTES.md`, `R8_NOTES.md`, `R7_NOTES.md`, `R6_NOTES.md`, `R5_NOTES.md`, `R4_NOTES.md`, `R3_NOTES.md`, `R2_NOTES.md`, `R1B_NOTES.md`, `BOOT_PATH_NOTES.md` |
 
 ## Credits
 - **SuperTux** – Bill Kendrick (original author), Tobias Glaesser (project leader), Ricardo Cruz

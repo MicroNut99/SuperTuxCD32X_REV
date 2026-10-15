@@ -1,7 +1,8 @@
 #!/bin/bash
-# SuperTux CD32X - builds the R11 disc: the whole of SuperTux 0.1.3 (Icyisland's 26 levels, both
-# Bonus Islands, the title with its demo, world maps, bad guys, power-ups, saves), half size,
-# sharpened.
+# SuperTux CD32X REV - builds the REV1 disc: the whole of SuperTux 0.1.3 (Icyisland's 26 levels,
+# both Bonus Islands, the title with its demo, world maps, bad guys, power-ups, saves), half size,
+# sharpened. REV is the rip and rebuild of R11's drawing (README.md); this script's steps and the
+# boot path are R11's, unchanged - only the disc's name is REV1.
 #
 # The steps are Hurrican CD32X's build (= the OpenJazz port's J19b, the last disc proven on the
 # console), with SuperTux's data in place of Hurrican's:
@@ -23,7 +24,7 @@ SRC="${SUPERTUX:-$HERE/SuperTux-0.1.3}"
 OUT="$HERE/build"
 ROMS="$HERE/cd32x/subcpu/ROMS"
 MARKER="SH2-OPENLARA-CD-OL1-LOADER"
-DISC=SuperTuxR11
+DISC=SuperTuxREV1
 mkdir -p "$OUT" "$ROMS"
 
 echo "==> boot path check (must be Hurrican CD32X's, unchanged)"
@@ -83,6 +84,6 @@ echo "==> disc checked: loader + program + splash + packs + sound effects"
 cd "$HERE/cd32x/subcpu" && python3 make_mixed_cd2.py CDROMPlayer.iso "$OUT"/music/Track*.wav --out $DISC
 echo
 echo "==> done:"
-echo "    disc: cd32x/subcpu/$DISC.cue (with its .bin) - for ares / a burner (Fusion cannot emulate the RAM cart)"
+echo "    disc: cd32x/subcpu/$DISC.cue (with its .bin) - for a burner (Fusion cannot emulate the RAM cart)"
 echo "    build/host_frames/         what the PC check drew (PPM)"
 echo "    build/previews/            every level as the 32X will draw it"

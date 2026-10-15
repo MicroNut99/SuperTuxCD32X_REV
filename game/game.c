@@ -25,6 +25,7 @@ uint32_t game_ms, global_frame;
 int opt_music = 1, opt_timing = 0, opt_swap = 0, opt_lives = START_LIVES;
 int opt_smooth = 1;                    /* R9: OPTIONS - MOTION (R6's drawing between steps) */
 int opt_ring = 1;                      /* R10: OPTIONS - SCROLL RING (1) / CLASSIC (0) */
+int opt_dma = 0;                       /* REV: OPTIONS - DRAW <CPU> (0) / <DMA> (1) */
 int opt_parallax = 0;                  /* R4: OPTIONS - BACKGROUND MOVES */
 
 void ps_reset(void)
@@ -288,9 +289,35 @@ static void particles_draw(int layer)
 /* ------------------------------------------------------------------ timing (OPTIONS - TIMING) */
 enum { T_LOGIC, T_TILES, T_SPR, T_HUD, T_WAIT, T_N };
 static uint32_t tacc[T_N], tshow[T_N], tframes, tms, fps10, tiles_acc, tiles_show;
+/* REV, TIMING <WORST>: the averages hide a single slow frame (the sideways shift every 48-64
+ * pixels). Each frame's own parts (tfr) are kept too; the slowest frame of the last 64 (L + T + S
+ * + H, the time before it can be shown) is latched with what its re-anchor did and how many
+ * cells it drew (and how many of them as DMA rows). */
+static uint32_t tfr[T_N];
+#define TADD(i, d) do { const uint32_t d_ = (d); tacc[i] += d_; tfr[i] += d_; } while (0)
+typedef struct { uint32_t t[T_N], busy, shift_us; int shift, cells, dma_cells; } WorstFrame;
+static WorstFrame worst_now, worst_show;
+static uint32_t worst_frames;
+static uint32_t frame_cells;           /* this frame's tiler cells (stat_cells, below) */
 
 static void timing_frame(void)
 {
+	const uint32_t busy = tfr[T_LOGIC] + tfr[T_TILES] + tfr[T_SPR] + tfr[T_HUD];
+	if (busy >= worst_now.busy)
+	{
+		memcpy(worst_now.t, tfr, sizeof tfr);
+		worst_now.busy = busy;
+		worst_now.shift = yt_frame_shift(&worst_now.shift_us);
+		worst_now.cells = (int)frame_cells;
+		worst_now.dma_cells = yt_frame_dma_cells();
+	}
+	memset(tfr, 0, sizeof tfr);
+	if (++worst_frames >= 64)
+	{
+		worst_show = worst_now;
+		memset(&worst_now, 0, sizeof worst_now);
+		worst_frames = 0;
+	}
 	if (++tframes < 16) return;
 	const uint32_t ms = plat_ticks_ms();
 	fps10 = ms != tms ? 16u * 10000u / (ms - tms) : 0;
@@ -301,10 +328,37 @@ static void timing_frame(void)
 	tframes = 0;
 }
 
+/* ms as "9.9" below 10, "12" from 10 on (the WORST line has to fit 39 characters) */
+static char *put_ms(char *q, uint32_t us)
+{
+	if (us >= 10000) return put_dec(q, us / 1000, 1);
+	q = put_dec(q, us / 1000, 1); q = put_str(q, ".");
+	return put_dec(q, (us / 100) % 10, 1);
+}
+
 /* F frames a second; ms a frame: L the rules, T the tile layers, S the sprites, H the panel,
- * W waiting for the swap; N tiles drawn a frame */
+ * W waiting for the swap; N tiles drawn a frame.
+ * REV, TIMING <WORST> (opt_timing 2): the slowest frame of the last 64 -
+ *   X its time before it could be shown (L + T + S + H), then its L T S H,
+ *   M what its re-anchor did: M- none, Mn.n the canvas moved (ms), ML left in place (its
+ *     cells are in T and N), N its cells, D how many of them went through the DMA rows
+ *     (shown when any did) */
 void timing_line(char *out)
 {
+	if (opt_timing == 2)
+	{
+		const WorstFrame *w = &worst_show;
+		char *q = put_str(out, "X");
+		q = put_ms(q, w->busy);
+		static const char *const wn[4] = { " L", " T", " S", " H" };
+		for (int i = 0; i < 4; i++) { q = put_str(q, wn[i]); q = put_ms(q, w->t[i]); }
+		q = put_str(q, " M");
+		if (w->shift == 1) q = put_ms(q, w->shift_us);
+		else q = put_str(q, w->shift == 2 ? "L" : "-");
+		q = put_dec(put_str(q, " N"), (uint32_t)w->cells, 1);
+		if (w->dma_cells) q = put_dec(put_str(q, " D"), (uint32_t)w->dma_cells, 1);
+		return;
+	}
 	char *q = put_str(out, "F");
 	q = put_dec(q, fps10 / 10, 2); q = put_str(q, "."); q = put_dec(q, fps10 % 10, 1);
 	static const char *const nm[T_N] = { " L", " T", " S", " H", " W" };
@@ -735,6 +789,7 @@ static void draw_world_now(void)
 	if (cx < 0) cx = 0;
 	if (cy < 0) cy = 0;
 	view_cx = cx; view_cy = cy;
+	frame_cells = 0;
 	level_animate(game_ms);
 	const int parallax = opt_parallax && back_px && lbkgd_speed != 100;
 	if (parallax != drew_parallax)
@@ -752,22 +807,23 @@ static void draw_world_now(void)
 		yt_back(back_px, back_stride, back_w, back_h, cx * lbkgd_speed / 100, cy);
 		particles_draw(0);               /* clouds, the far snow: behind the tiles */
 		tiles_over_back(1, 2, cx, cy);
-		t1 = plat_prof_us(); tacc[T_TILES] += t1 - t0; t0 = t1;
+		t1 = plat_prof_us(); TADD(T_TILES, t1 - t0); t0 = t1;
 		objects_draw_back(cx, cy, game_ms);
 		tux_draw(cx, cy, game_ms, global_frame);
-		t1 = plat_prof_us(); tacc[T_SPR] += t1 - t0; t0 = t1;
+		t1 = plat_prof_us(); TADD(T_SPR, t1 - t0); t0 = t1;
 		tiles_over_back(3, 3, cx, cy);   /* foreground-tm: over Tux */
-		t1 = plat_prof_us(); tacc[T_TILES] += t1 - t0; t0 = t1;
+		t1 = plat_prof_us(); TADD(T_TILES, t1 - t0); t0 = t1;
 		particles_draw(1);
 		objects_draw_front(cx, cy);
-		t1 = plat_prof_us(); tacc[T_SPR] += t1 - t0;
+		t1 = plat_prof_us(); TADD(T_SPR, t1 - t0);
 		return;
 	}
 	level_mark_animated(cx, cy);
 	if (part_kind == 2) clouds_before(cx, cy);
 	stat_cells = (uint32_t)yt_layers(0, 0);          /* the merged pictures */
+	frame_cells = stat_cells;
 	tiles_acc += stat_cells;
-	t1 = plat_prof_us(); tacc[T_TILES] += t1 - t0; t0 = t1;
+	t1 = plat_prof_us(); TADD(T_TILES, t1 - t0); t0 = t1;
 	if (part_kind == 2) clouds_draw(cx, cy);         /* R5: kept, drawn again only when needed */
 	else if (nparts)
 		particles_draw(0);                           /* the far snow: only where no tile is (R5) */
@@ -777,7 +833,7 @@ static void draw_world_now(void)
 	overlay_cells(3, cx, cy);                        /* foreground-tm: over Tux */
 	particles_draw(1);                               /* the near snow */
 	objects_draw_front(cx, cy);                      /* floating scores */
-	t1 = plat_prof_us(); tacc[T_SPR] += t1 - t0;
+	t1 = plat_prof_us(); TADD(T_SPR, t1 - t0);
 }
 
 /* the panel: SuperTux's status line (drawstatus) and the level's name, or the timing line */
@@ -799,7 +855,7 @@ static void draw_status(void)
 	if (title_of != session_level) { strncpy(title, level_title(session_level), 47); title_of = session_level; }
 	const char *t = title;
 	int n = 0;
-	const int maxn = opt_timing ? 18 : 28;
+	const int maxn = opt_timing ? 15 : 28;
 	while (t[n] && n < maxn) { q[n] = t[n]; n++; }
 	q[n] = 0;
 	if (opt_timing)
@@ -811,11 +867,14 @@ static void draw_status(void)
 		for (int k = 12; k >= 0; k -= 4) *e++ = hx[(pad_raw >> k) & 15];
 		*e = 0;
 		e = put_dec(put_str(e, " S"), pad_stale % 1000u, 1);   /* R9: old pad replies */
+		/* REV: OPTIONS - DRAW: D0 the CPU, D1 DMA rows, D! DMA once failed - the CPU copies */
+		static const char *const ds[3] = { " D0", " D1", " D!" };
+		put_str(e, ds[yt_dma_state()]);
 	}
 	if (opt_timing) timing_line(l3);
 	else put_str(l3, "");
 	panel_show(l1, l2, l3, end_sequence ? col_yellow : col_white);
-	tacc[T_HUD] += plat_prof_us() - t0;
+	TADD(T_HUD, plat_prof_us() - t0);
 }
 
 /* GameSession::levelintro: the name, "TUX x lives", "by author" over the level, 1 to 3 s.
@@ -1029,9 +1088,9 @@ int game_play(int li)
 		if (exit_status != ES_NONE) break;
 		frame_25 = game_ms / 25;       /* SuperTux's global_frame_counter: one every 25 ms */
 		global_frame = frame_25;
-		t1 = plat_prof_us(); tacc[T_LOGIC] += t1 - t0; t0 = t1;
+		t1 = plat_prof_us(); TADD(T_LOGIC, t1 - t0); t0 = t1;
 		plat_wait_flip();
-		t1 = plat_prof_us(); tacc[T_WAIT] += t1 - t0;
+		t1 = plat_prof_us(); TADD(T_WAIT, t1 - t0);
 		game_draw_world();
 #ifndef OJ32X_MARS
 		if (getenv("ST_TUXY")) fprintf(stderr, "TY %d %d\n", FX_INT(tux.y), FX_INT(tux.x));   /* PC: Tux's place a frame */
@@ -1045,8 +1104,8 @@ int game_play(int li)
 			extern uint32_t yt_stat_spr, yt_stat_px;
 			extern int yt_stat_reanchor[3];
 			static uint32_t f;
-			fprintf(stderr, "STAT %u %u %u %u %d %d %d %d %d\n", f++, stat_cells, yt_stat_spr, yt_stat_px, view_cx, view_cy,
-			        yt_stat_reanchor[0], yt_stat_reanchor[1], yt_stat_reanchor[2]);
+			fprintf(stderr, "STAT %u %u %u %u %d %d %d %d %d %d\n", f++, stat_cells, yt_stat_spr, yt_stat_px, view_cx, view_cy,
+			        yt_stat_reanchor[0], yt_stat_reanchor[1], yt_stat_reanchor[2], yt_frame_dma_cells());   /* REV: + DMA row cells */
 		}
 		{ extern uint32_t yt_stat_spr, yt_stat_px; yt_stat_spr = yt_stat_px = 0; }
 #endif

@@ -149,6 +149,28 @@ void yt_move_row(uint8_t *d, const uint8_t *s, int n)
 	memmove(d, s, (size_t)n);
 }
 
+/* REV: the DMA unit on the PC (game/yt_mars.c has the 32X one): a checked memcpy. The PC cannot
+ * show what DMA costs or saves (the docs: "on the PC the DMA is a memcpy") - it checks that the
+ * lines land where the CPU would have drawn them (ST_TRUTH compares the pictures).
+ * ST_DMA_FAIL=n: the n-th transfer "never ends" - the fallback path is taken from there on. */
+static int dma_bad, dma_count;
+bool plat_dma_ok(void) { return !dma_bad; }
+void plat_dma_wait(void) { }
+void plat_dma_start(void *dst, const void *src, unsigned int bytes)
+{
+	if ((((uintptr_t)dst - (uintptr_t)canvas()) | (uintptr_t)src | bytes) & 3)
+	{
+		fprintf(stderr, "YT HOST: DMA not 4-aligned\n");
+		abort();
+	}
+	canvas_check((const uint8_t *)dst, (int)bytes, "plat_dma_start");
+	const char *f = getenv("ST_DMA_FAIL");
+	if (f && ++dma_count == atoi(f)) dma_bad = 1;
+	memcpy(dst, src, bytes);
+}
+static uint32_t dma_lines[2][YT_PITCH / 4];
+uint32_t *yt_dma_line(int i) { return dma_lines[i & 1]; }
+
 void yt_picture(const uint8_t *pixels)
 {
 	for (int y = 0; y < YT_VIEW_H; y++) memcpy(canvas() + y * YT_PITCH, pixels + y * YT_VIEW_W, YT_VIEW_W);

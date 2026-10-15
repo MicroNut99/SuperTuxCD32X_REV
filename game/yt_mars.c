@@ -53,6 +53,95 @@ void yt_move_row(uint8_t *d, const uint8_t *s, int n)
 	else for (int i = w - 1; i >= 0; i--) dw[i] = sw[i];
 }
 
+/* ---- REV: the master SH2's DMA unit for the tiler's lines (port/plat.h declares these three;
+ * nothing in the port defines them, so they live here, in game/ - the boot path is untouched).
+ *
+ * What the docs say and this follows (OpenTyrian addendum, "Use the SH2's DMA for opaque lines"):
+ * compose a line in SDRAM, let DMA channel 0 copy it into the frame buffer (auto request,
+ * cycle-steal, 32-bit units) while the CPU composes the next one; give every wait a timeout and
+ * fall back to the CPU for good if one ever fails. Tyrian measured 18-19 ms against 24 ms.
+ *
+ * The 32X manual's rules for this ("1.15 Restrictions", "Please make the following setting ..."):
+ *   - auto-request DMA: the interrupts must be masked while it runs. The master's V interrupt
+ *     is held off from plat_dma_start until plat_dma_wait has seen the end (one line: well under
+ *     0.1 ms) - between two lines it is let through, so a vblank is only ever a line late. The
+ *     slave takes no interrupts while it draws (only its command interrupt is on, never raised).
+ *   - memory to memory: CHCR = xxxx xx10 1110 0xxx (AR = 1, AM = 0, AL = DS = DL = 1, TB = 0
+ *     cycle-steal, TA = 0 dual address); here DM = SM = 01 (increment), TS = 10 (longs), DE = 1.
+ *   - only the master runs DMA (two at once: one of them crawls); no PWM, no H interrupt here.
+ *   - both addresses in the cache-through area (0x2xxxxxxx): the DMA does not see the cache.
+ *     The SH2's cache writes through, so the composed line is in SDRAM before its DMA starts.
+ * Channel 0's DREQ use (the 68000 FIFO) is not used by this boot path: DRCR0 = 0 (auto). */
+#define DMA_SAR0   (*(volatile uint32_t *)0xFFFFFF80)
+#define DMA_DAR0   (*(volatile uint32_t *)0xFFFFFF84)
+#define DMA_TCR0   (*(volatile uint32_t *)0xFFFFFF88)
+#define DMA_CHCR0  (*(volatile uint32_t *)0xFFFFFF8C)
+#define DMA_DRCR0  (*(volatile uint8_t  *)0xFFFFFE71)
+#define DMA_DMAOR  (*(volatile uint32_t *)0xFFFFFFB0)
+#define CHCR_LINE  0x5AE1u          /* DM 01, SM 01, TS 10, AR, AL, DS, DL, cycle-steal, DE */
+#define CHCR_TE    0x0002u
+#define DMA_SPIN   100000u          /* ~ 30 ms of polling (one poll ~ 7 cycles): a line takes < 0.2 ms */
+
+static int dma_bad;                  /* a transfer never ended: the CPU copies from now on */
+static int dma_busy;                 /* a transfer was started and not yet waited for */
+static uint32_t dma_sr;              /* the status register before plat_dma_start masked */
+static void *dma_dst; static const void *dma_src; static unsigned dma_len;   /* the one in flight */
+
+static uint32_t sr_get(void) { uint32_t sr; __asm__ __volatile__("stc sr,%0" : "=r"(sr)); return sr; }
+static void sr_set(uint32_t sr) { __asm__ __volatile__("ldc %0,sr" : : "r"(sr) : "memory"); }
+
+static void cpu_copy(void *dst, const void *src, unsigned bytes)
+{
+	volatile uint32_t *d = (volatile uint32_t *)dst;
+	const volatile uint32_t *s = (const volatile uint32_t *)src;
+	for (unsigned i = 0; i < bytes / 4; i++) d[i] = s[i];
+}
+
+static uint32_t through(const void *p) { return (uint32_t)(uintptr_t)p | 0x20000000u; }
+
+bool plat_dma_ok(void) { return !dma_bad; }
+
+void plat_dma_wait(void)
+{
+	if (!dma_busy) return;
+	uint32_t n = 0;
+	while (!(DMA_CHCR0 & CHCR_TE) && ++n < DMA_SPIN) { }
+	if (!(DMA_CHCR0 & CHCR_TE))
+	{
+		/* it never ended: stop the channel, copy the line with the CPU, never use DMA again */
+		DMA_CHCR0 = 0;
+		(void)DMA_DMAOR; DMA_DMAOR = 0;
+		dma_bad = 1;
+		cpu_copy(dma_dst, dma_src, dma_len);
+	}
+	dma_busy = 0;
+	sr_set(dma_sr);                   /* the vblank may come in now */
+}
+
+void plat_dma_start(void *dst, const void *src, unsigned int bytes)
+{
+	plat_dma_wait();
+	if (dma_bad || bytes < 4) { cpu_copy(dst, src, bytes); return; }
+	dma_sr = sr_get();
+	sr_set(dma_sr | 0xF0);            /* interrupts off while the DMA runs (32X manual 1.15) */
+	dma_dst = dst; dma_src = src; dma_len = bytes;
+	(void)DMA_CHCR0;
+	DMA_CHCR0 = 0;                    /* DE off, TE cleared (read first, then 0) */
+	if (DMA_DMAOR & 0x6u) { DMA_DMAOR = 0; }   /* an old address error / NMI flag: clear it */
+	DMA_DRCR0 = 0;
+	DMA_SAR0 = through(src);
+	DMA_DAR0 = through(dst);
+	DMA_TCR0 = bytes >> 2;
+	DMA_DMAOR = 1;                    /* DME: the DMA unit on, fixed priority */
+	DMA_CHCR0 = CHCR_LINE;
+	dma_busy = 1;
+}
+
+/* the two line buffers the tiler composes into (SDRAM, written through the cache-through
+ * address so the tile pictures it reads stay in the cache) */
+static uint32_t dma_lines[2][YT_PITCH / 4];
+uint32_t *yt_dma_line(int i) { return (uint32_t *)through(dma_lines[i & 1]); }
+
 void yt_picture(const uint8_t *pixels)
 {
 	/* 320 x 176 into the canvas (byte 0x200, 384 a line), 32-bit writes; pixels 4-byte aligned */

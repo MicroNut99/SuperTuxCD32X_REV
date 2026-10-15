@@ -211,8 +211,26 @@ The splash, music levels, the menus and extras of the other ports, options from 
 
 - R10 on the console: RING smoother. OPTIONS - LEVEL SELECT (only from the title).
 
+## REV - the rip and rebuild (repository github.com/MicroNut99/SuperTuxCD32X_REV)
+
+REV takes R11 apart and rebuilds its drawing, part by part, to reach the speed Sega CD games
+reach on the hardware (a steady 60, no catch when scrolling). The boot path stays as above;
+REV changes only what runs on the SH2s. Testing: the PC (pictures) and discs (timing) - Fusion
+has no RAM cart and stops at the splash, ares does not boot CD32X.
+
+## REV1 - DMA rows, Timing Worst (docs/REV1_NOTES.md)
+
+- OPTIONS - DRAW CPU / DMA: rows of >= 3 adjacent new cells composed a line at a time in SDRAM
+  and copied by the master's DMA channel 0 while the next line is composed (Tyrian's method);
+  the slave draws the other cells. plat_dma_* (declared in port/plat.h, defined in
+  game/yt_mars.c), interrupts masked per line (32X manual 1.15), timeout -> the CPU for good.
+- OPTIONS - TIMING OFF / ON / WORST: the slowest frame of 64 with its shift (M) and cells.
+- PC: DMA pictures identical to the CPU's on all 77 levels and the 3 maps; asan clean.
+
 ## Next
 
+0. REV1 on the console: Timing Worst with Draw CPU, then DMA (docs/REV1_NOTES.md, "What to test").
+   The worst frame's M / T decide the next rip: the canvas move, or the cells after a shift.
 1. R10 on the console: RING vs CLASSIC while jumping; the sideways catches; clouds.
 2. The platform's frame pacing (port/plat_mars.c OJ32X_PACE, median of 16) holds fast frames
    back when about half run long; a compile switch, but port/ stays as proven unless the user

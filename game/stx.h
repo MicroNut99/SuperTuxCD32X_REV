@@ -268,6 +268,7 @@ extern fx scroll_x;                    /* the camera, units (World::scrolling) *
 extern int cam_y;                      /* units (ours: the 32X shows 352 of SuperTux's 480 lines) */
 extern uint32_t game_ms, global_frame;
 extern int opt_music, opt_timing, opt_swap, opt_lives, opt_parallax, opt_smooth, opt_ring;
+extern int opt_dma;                    /* REV: OPTIONS - DRAW <DMA> (game/yt_layers.c) */
 void trybreakbrick(int x, int y, int small, int dir);
 void tryemptybox(int x, int y, int dir);
 void trygrabdistro(int x, int y, int bounce);
