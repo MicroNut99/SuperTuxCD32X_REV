@@ -98,12 +98,38 @@ static void front_32x(int on) { host_pri = on; }   /* the PC model composites by
  * colour 192 + y * 64 / 176, the level's 64 sky shades (tools/stx_pack.py sky_shades), each with
  * the through bit: behind the Genesis planes, seen where the level's tiles are see-through.
  * Clearing a rectangle (the sprites drawn there last time) puts the sky back line by line. */
+/* REV8: with SKY.BIN each line is a 4-pixel pattern of two neighbouring 15-bit shades (an
+ * ordered dither: no bands), written a 32-bit word at a time like a plain fill - the canvas is
+ * 4-aligned and 384 wide, so a word at x & ~3 holds the pattern's pixels 0-3 in order. */
+static void sky_row(uint8_t *d, int x, int n, const uint8_t *pat)
+{
+	const uint32_t w4 = (uint32_t)pat[0] << 24 | (uint32_t)pat[1] << 16 | (uint32_t)pat[2] << 8 | pat[3];
+	for (; n > 0 && (x & 3); n--, x++) *(volatile uint8_t *)(d + x) = pat[x & 3];
+#ifdef OJ32X_MARS
+	for (; n >= 4; n -= 4, x += 4) *(volatile uint32_t *)(d + x) = w4;   /* big-endian: pat[0] first */
+#else
+	(void)w4;
+	for (; n >= 4; n -= 4, x += 4) memcpy(d + x, pat, 4);
+#endif
+	for (; n > 0; n--, x++) *(volatile uint8_t *)(d + x) = pat[x & 3];
+}
+
 static void sky_fill(int x, int y, int w, int h)
 {
+	if (x < 0) { w += x; x = 0; }
 	if (y < 0) { h += y; y = 0; }
+	if (x + w > YT_VIEW_W) w = YT_VIEW_W - x;
 	if (y + h > YT_VIEW_H) h = YT_VIEW_H - y;
+	if (w <= 0 || h <= 0) return;
+	if (!sky_pat)
+	{
+		for (int k = 0; k < h; k++)
+			yt_fill(x, y + k, w, 1, (uint8_t)(THROUGH + (y + k) * 64 / YT_VIEW_H));
+		return;
+	}
+	uint8_t *c = yt_canvas();
 	for (int k = 0; k < h; k++)
-		yt_fill(x, y + k, w, 1, (uint8_t)(THROUGH + (y + k) * 64 / YT_VIEW_H));
+		sky_row(c + (y + k) * YT_PITCH, x, w, sky_pat + 4 * (y + k));
 }
 
 void gl_begin(int cx, int cy, int in_loop)

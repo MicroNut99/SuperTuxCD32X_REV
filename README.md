@@ -22,6 +22,7 @@
 ## REV rounds
 | Round | What was ripped out and what replaced it |
 |---|---|
+| REV9 | **The sky without bands, 4 palettes for the level** (`docs/REV9_NOTES.md`): each sky line mixes the two nearest 15-bit colours in a 4 × 4 ordered pattern, so the gradient has no visible steps; the Genesis palette the old sky used now goes to the level's tiles (4 × 15 colours). |
 | REV8 | **The sky is the 32X's** (`docs/REV8_NOTES.md`): the Genesis sky (one 15-colour palette, scaled, dithered) is switched off; each level gets a 64-shade 15-bit gradient sky drawn by the 32X behind the Genesis level, as Sonic32X does - SuperTux's own colours for the gradient levels, the picture's own colours for the others. |
 | REV7 | **REV6's black screen fixed** (`docs/REV7_NOTES.md`): the 32X was set to sit *behind* the Genesis (the 32X's priority bit, as the game always had it), so the level planes were covered by black and the sprites hidden behind them. The 32X now goes in front while a level is on the Genesis, as the 32X hardware manual describes. |
 | REV6 | **The game is built from Genesis tiles** (`docs/REV6_NOTES.md`): every level and the title's demo are Genesis tiles on the Genesis' planes, scrolled by the Genesis chip, the way Sonic CD does it; the 32X draws only what moves. The 32X-drawn version of the levels and the background picture packs are gone from the disc, and so are the Draw and Background options - there is no switch. |
@@ -38,7 +39,7 @@ REV2 starts the rebuild: the commands the Genesis planes need, tested for bootin
 
 SuperTux 0.1.3 ("Milestone 1", 2004 – the classic platformer with Tux) on the **Sega CD32X**,
 drawn with Victor Luchits' **YATSSD** tile renderer on the boot, cart and Sub-CPU layers of the
-Hurrican CD32X port. **Version REV8 (from R11).** The whole game runs from one CD: the title with its demo
+Hurrican CD32X port. **Version REV9 (from R11).** The whole game runs from one CD: the title with its demo
 level, Icyisland and both Bonus Islands with their world maps, all 76 levels, every bad guy and
 power-up, CD music, PCM sound effects, saving and high scores. The levels are kept in a 4 MB RAM
 cart once they have been read from the disc.
@@ -81,7 +82,7 @@ libxmp-lite), and so are the sound effects, the pictures and the splash.
 1. The first run fetches SuperTux 0.1.3.
 2. The build converts the data, makes the splash, the sound effects and the CD tracks, checks
    the game on the PC (`host/`), builds the SH2 program, the loader and the Sub-CPU side.
-3. **REV8: `cd32x/subcpu/SuperTuxREV8.cue`** - no boot stack changes since REV4 (which booted), so run it in Fusion as usual, then burn it (with its `.bin`). It has the data track and the 12
+3. **REV9: `cd32x/subcpu/SuperTuxREV9.cue`** - no boot stack changes since REV4 (which booted), so run it in Fusion as usual, then burn it (with its `.bin`). It has the data track and the 12
    music tracks.
 
 `DATA_ONLY=1 ./build.sh` stops after the data and the PC check (no Sega toolchain needed).
@@ -152,7 +153,7 @@ left/right changes a setting. *Options → Jump* swaps A and B (C/B jump, A runs
   backgrounds not); the 32X shows the
   whole width and 352 of the 480 lines (176 pixels), with the camera following Tux up and down.
   The status line is in a panel under the level.
-- REV6: the levels are Genesis tiles - the Genesis' colours (3 palettes of 15). REV8: the sky is
+- REV6: the levels are Genesis tiles - the Genesis' colours (REV9: 4 palettes of 15). REV8: the sky is
   a 32X gradient fixed to the screen (SuperTux's background pictures are not shown).
 - 24 snowflakes instead of SuperTux's 128; the far flakes are not drawn over tiles.
 - No level editor and no Quit in the main menu.
@@ -268,6 +269,7 @@ console.
 | R9 | Finding the stuck buttons: the timing panel counts pad replies that came back old (S); Options → Motion turns R6's smooth drawing off to compare. |
 | R10 | Options → Scroll RING: the picture wraps up and down, so the view never has to be shifted when Tux jumps; sideways shifts redraw only what differs and happen early on quiet frames; a strip of old picture (R4–R9) fixed. |
 | R11 | Options → Level Select (from the title): any of the 76 levels. |
+| **REV9** | Dithered 32X skies (no bands); 4 Genesis palettes for the level. |
 | **REV8** | The 32X's gradient skies behind the Genesis level (Sonic32X's way); the Genesis sky off. |
 | **REV7** | The 32X in front of the Genesis while a level is on the Genesis' planes (REV6's black screen). |
 | **REV6** | The game built from Genesis tiles: every level and the demo on the Genesis' planes, no 32X version of the levels, no Draw / Background switch. |
@@ -293,7 +295,7 @@ console.
 | `tools/stx_convert.py`, `stx_pack.py` | SuperTux 0.1.3 → the 32X's data; the disc's files and the cart layout |
 | `tools/make_stx_sfx.py`, `make_stx_splash.py`, `stx_music.sh` | sound effects, the splash, the CD tracks |
 | `tools/check_boot.py`, `check_sdram_code.py`, `where.sh` | build checks; naming the addresses on a red exception screen |
-| `docs/` | developer notes: `REV8_NOTES.md`, `REV7_NOTES.md`, `REV6_NOTES.md`, `REV5_NOTES.md`, `REV4_NOTES.md`, `REV3_NOTES.md`, `REV2_NOTES.md`, `REV1_NOTES.md`, `STX_HANDOFF.md`, `R11_NOTES.md`, `R10_NOTES.md`, `R9_NOTES.md`, `R8_NOTES.md`, `R7_NOTES.md`, `R6_NOTES.md`, `R5_NOTES.md`, `R4_NOTES.md`, `R3_NOTES.md`, `R2_NOTES.md`, `R1B_NOTES.md`, `BOOT_PATH_NOTES.md` |
+| `docs/` | developer notes: `REV9_NOTES.md`, `REV8_NOTES.md`, `REV7_NOTES.md`, `REV6_NOTES.md`, `REV5_NOTES.md`, `REV4_NOTES.md`, `REV3_NOTES.md`, `REV2_NOTES.md`, `REV1_NOTES.md`, `STX_HANDOFF.md`, `R11_NOTES.md`, `R10_NOTES.md`, `R9_NOTES.md`, `R8_NOTES.md`, `R7_NOTES.md`, `R6_NOTES.md`, `R5_NOTES.md`, `R4_NOTES.md`, `R3_NOTES.md`, `R2_NOTES.md`, `R1B_NOTES.md`, `BOOT_PATH_NOTES.md` |
 
 ## Credits
 - **SuperTux** – Bill Kendrick (original author), Tobias Glaesser (project leader), Ricardo Cruz

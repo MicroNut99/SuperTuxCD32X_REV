@@ -191,6 +191,7 @@ const uint8_t *gen_bg;
  * drawn by the 32X (the timing line shows DX) */
 const uint8_t *gl_level;
 int gl_fell;
+const uint8_t *sky_pat;                /* REV8: SKY.BIN - 176 lines x 4 palette indices (tools/stx_pack.py sky_dither) */
 unsigned gen_bg_serial;                /* + 1 each level read (the picture is uploaded again) */
 
 void load_level(int li)
@@ -207,6 +208,7 @@ void load_level(int li)
 	const uint8_t *g = pk_file(base, "GENLVL.BIN", 0);
 	if (!g || memcmp(g, "STGL", 4)) plat_fatal("GENLVL.BIN: NO GENESIS LEVEL");
 	gl_level = g;
+	sky_pat = pk_file(base, "SKY.BIN", 0);   /* REV8: the 32X sky's line patterns (0: plain shades) */
 	level_n = li;
 	uint32_t csize;
 	level_bin = pk_file(base, "LEVELG.BIN", 0);

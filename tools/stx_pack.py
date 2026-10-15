@@ -126,37 +126,59 @@ THROUGH = 0x8000                       # REV3: a 32X colour with the through bit
                                        # "Priority"): its pixels show the Genesis picture behind
 
 
-def sky_shades(bgi, top, bot, back):
-    """REV8: a level's sky as 64 15-bit shades, top to bottom. A gradient level: SuperTux's own
-    two colours. A picture level: the picture's own colours - the averages of its top, middle and
-    bottom thirds joined smoothly - so the sky keeps the picture's look (its sky at the top, its
-    hills' or sea's colours lower down) without the picture."""
+VIEW_H = 176                           # the 32X view's lines (game/yt.h YT_VIEW_H)
+BAYER4 = np.array([[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]])
+
+
+def sky_rgb(bgi, top, bot, back):
+    """REV8: a level's sky, one colour (0-255 RGB, not yet 15-bit) for each of the view's lines,
+    top to bottom. A gradient level: SuperTux's own two colours. A picture level: the picture's
+    own colours - the averages of its top, middle and bottom thirds joined smoothly - so the sky
+    keeps the picture's look (its sky at the top, its hills' or sea's colours lower down)."""
     if bgi == 0xFFFF:
-        t, b = rgb_of(top), rgb_of(bot)
-        rgb = [[t[c] + (b[c] - t[c]) * s / 63 for c in range(3)] for s in range(64)]
-    else:
-        px, cols, bw, bh = back[bgi]
-        pal = np.array([rgb_of(struct.unpack(">H", cols[2 * i:2 * i + 2])[0]) if 2 * i + 2 <= len(cols) else (0, 0, 0)
-                        for i in range(64)], np.float64)
-        pic = np.frombuffer(px, np.uint8).reshape(bh, bw).astype(np.int64) - 192
-        img = pal[np.clip(pic, 0, 63)]
-        rows = img.mean(axis=1)                                   # one colour a picture row
-        # three stops - the average of the top, middle and bottom third at 1/6, 1/2, 5/6 of the
-        # height - joined smoothly: a clean gradient in the picture's colours (no hard bands)
-        stops = [rows[k * bh // 3:(k + 1) * bh // 3].mean(axis=0) for k in range(3)]
-        rgb = []
-        for s in range(64):
-            f = (s + 0.5) / 64 * 3 - 0.5                          # 0 .. 2 between the stops
-            f = min(2.0, max(0.0, f))
-            i = min(1, int(f))
-            u = f - i
-            u = u * u * (3 - 2 * u)                               # ease
-            rgb.append(stops[i] * (1 - u) + stops[i + 1] * u)
+        t, b = np.array(rgb_of(top), np.float64), np.array(rgb_of(bot), np.float64)
+        return [t + (b - t) * y / (VIEW_H - 1) for y in range(VIEW_H)]
+    px, cols, bw, bh = back[bgi]
+    pal = np.array([rgb_of(struct.unpack(">H", cols[2 * i:2 * i + 2])[0]) if 2 * i + 2 <= len(cols) else (0, 0, 0)
+                    for i in range(64)], np.float64)
+    pic = np.frombuffer(px, np.uint8).reshape(bh, bw).astype(np.int64) - 192
+    rows = pal[np.clip(pic, 0, 63)].mean(axis=1)                  # one colour a picture row
+    stops = [rows[k * bh // 3:(k + 1) * bh // 3].mean(axis=0) for k in range(3)]
     out = []
-    for c in rgb:
-        v = c555(*[int(max(0, min(255, x))) for x in c])
-        out.append(v or 0x0400)                                  # 0x0000 is see-through on the 32X
+    for y in range(VIEW_H):
+        f = min(2.0, max(0.0, (y + 0.5) / VIEW_H * 3 - 0.5))      # 0 .. 2 between the stops
+        i = min(1, int(f))
+        u = f - i
+        u = u * u * (3 - 2 * u)                                   # eased
+        out.append(stops[i] * (1 - u) + stops[i + 1] * u)
     return out
+
+
+def sky_dither(rgb):
+    """REV8: the sky without bands. 15-bit colour has 32 steps a channel, so a smooth gradient
+    shows steps (horizontal lines) where a channel moves up one. Each line's exact colour is
+    made of the two nearest 15-bit steps mixed in a 4 x 4 ordered pattern (Bayer) - on a TV
+    the mix reads as the colour in between. Returns the colours (at most 64: palette 192-255)
+    and each line's 4-pixel pattern (palette indices for x & 3; the row of the pattern is
+    y & 3), for game/gen_level.c sky_fill. Fewer pattern levels if the colours would not fit."""
+    for levels in (16, 8, 4, 2, 1):
+        thr = (BAYER4 * levels // 16 + 0.5) / levels if levels > 1 else np.full((4, 4), 0.5)
+        colours, idx, pats = [], {}, []
+        for y, c in enumerate(rgb):
+            v = np.clip(np.asarray(c, np.float64), 0, 255) / 8.0      # 0 .. 31.9 in 15-bit steps
+            pat = []
+            for x in range(4):
+                q = np.clip(np.floor(v + thr[y & 3][x]), 0, 31).astype(int)   # mean over the pattern = v
+                c15 = (int(q[2]) << 10) | (int(q[1]) << 5) | int(q[0])
+                c15 = c15 or 0x0400                              # 0x0000 is see-through on the 32X
+                if c15 not in idx:
+                    idx[c15] = len(colours)
+                    colours.append(c15)
+                pat.append(192 + idx[c15])
+            pats.append(pat)
+        if len(colours) <= 64:
+            return colours + [colours[-1]] * (64 - len(colours)), pats
+    raise SystemExit("*** sky_dither: more than 64 colours")
 
 
 def build_level(lv, tdesc, frames, back, genesis=False):
@@ -183,7 +205,8 @@ def build_level(lv, tdesc, frames, back, genesis=False):
         # REV8: the sky is a 32X gradient, as in Sonic32X: 192-255 are 64 shades (line y of the
         # view shows shade y * 64 / 176), each with the through bit - behind the Genesis planes
         # (the 32X is in front during levels, PRI 1), seen where the level's tiles are see-through
-        colours = struct.pack(">64H", *[THROUGH | c for c in sky_shades(bgi, top, bot, back)])
+        sky_cols, sky_pats = sky_dither(sky_rgb(bgi, top, bot, back))
+        colours = struct.pack(">64H", *[THROUGH | c for c in sky_cols])
     elif bgi != 0xFFFF:
         px, cols, bw, bh = back[bgi]
         pic = np.frombuffer(px, np.uint8).reshape(bh, bw)
@@ -366,6 +389,9 @@ def main():
         # GENESIS (a picture on the Genesis) and REV4's DRAW GENESIS (all levels)
         lg, cg, s = build_level(lvb, tdesc, frames, back, genesis=True)
         files += [("LEVELG.BIN", lg), ("COMPG.BIN", cg)]
+        # REV8: the sky's line patterns (176 lines x 4 palette indices; sky_dither)
+        bgi_, top_, bot_ = struct.unpack(">HHH", lvb[8:14])
+        files.append(("SKY.BIN", bytes(sum(sky_dither(sky_rgb(bgi_, top_, bot_, back))[1], []))))
         gen_extra += len(lg) + len(cg)
         # REV4: the level as Genesis tiles and map columns (tools/stx_genesis.py genesis_level)
         bgi, top, bot = struct.unpack(">HHH", lvb[8:14])

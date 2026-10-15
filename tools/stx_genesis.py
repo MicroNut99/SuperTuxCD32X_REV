@@ -405,7 +405,9 @@ def genesis_level(level_bin, comp_bin, global_pal, grad=None, picture=None):
             for q in range(4):
                 units.append((r, q, [quads(blocks[res_first[r]])[q]]))
 
-    # 3 palettes: units grouped by their visible colours, 15 colours each
+    # 3 palettes (REV8: 4 - plane B is empty, the 32X draws the sky, so palette 3 is the level's
+    # too): units grouped by their visible colours, 15 colours each
+    NP = 4 if picture is None and grad is None else 3
     def vis(u):
         pts = np.concatenate([lut[a[~transparent(a)]] for a in u[2]]) if u[2] else np.zeros((0, 3))
         return pts
@@ -416,9 +418,9 @@ def genesis_level(level_bin, comp_bin, global_pal, grad=None, picture=None):
         feats.append(np.concatenate([v.mean(0), v.std(0)]) if len(v) else np.zeros(6))
     feats = np.array(feats)
     vis_idx = [i for i in range(len(units)) if has[i]]
-    _, glab = _kmeans(feats[vis_idx], 3) if len(vis_idx) >= 3 else (None, np.zeros(len(vis_idx), np.int64))
-    cram = np.zeros((3, 16, 3), np.int64)
-    for g in range(3):
+    _, glab = _kmeans(feats[vis_idx], NP) if len(vis_idx) >= NP else (None, np.zeros(len(vis_idx), np.int64))
+    cram = np.zeros((NP, 16, 3), np.int64)
+    for g in range(NP):
         mem = [vis_idx[i] for i in range(len(vis_idx)) if glab[i] == g]
         if not mem:
             continue
@@ -430,7 +432,7 @@ def genesis_level(level_bin, comp_bin, global_pal, grad=None, picture=None):
     def fit(u):
         """the palette that shows the unit best, and its pixels in it (0 = see-through)"""
         best = None
-        for g in range(3):
+        for g in range(NP):
             e = 0.0
             for a in u[2]:
                 m = ~transparent(a)
@@ -520,13 +522,13 @@ def genesis_level(level_bin, comp_bin, global_pal, grad=None, picture=None):
         gb_cram, gb_map, gb_tiles, gb_n = gradient_plane(*grad)
     else:
         # REV8: no Genesis sky (the 32X draws it): plane B an empty map - tile 0 is the font's
-        # blank tile, all see-through - and palette 3 black
-        gb_cram, gb_map, gb_tiles, gb_n = [0] * 16, np.zeros((PLANE_H, PLANE_W), np.int64), b"", 0
+        # blank tile, all see-through - and palette 3 is the level's fourth
+        gb_cram, gb_map, gb_tiles, gb_n = [], np.zeros((PLANE_H, PLANE_W), np.int64), b"", 0
         kind = 2
 
     head_len = 60
     parts = []
-    cram_w = _cram_words(cram.reshape(48, 3)) + list(gb_cram)
+    cram_w = _cram_words(cram.reshape(NP * 16, 3)) + list(gb_cram)   # 64 words either way
     parts.append(struct.pack(">%dH" % len(cram_w), *cram_w))
     parts.append(b"".join(_tile_bytes(a) for a in s_store))
     parts.append(struct.pack(">%dH" % len(top_e), *top_e))
