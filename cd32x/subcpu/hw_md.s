@@ -462,7 +462,7 @@ md_init_hw:
         lea     vblank_int(pc),a0
         move.l  a0,0xFFFD08
 
-        move.w  #0x8134,(a4)            | OL-13: display OFF (V-int on) - no white boot text
+        move.w  #0x8174,(a4)            | SuperTux CD32X first builds: display ON - Chilly's white boot text visible (OL-13 had 0x8134 = off)
         movem.l (sp)+,d2-d7/a2-a5
         move    #0x2000,sr
         rts

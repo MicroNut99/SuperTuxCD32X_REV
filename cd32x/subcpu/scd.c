@@ -28,7 +28,7 @@ extern int do_md_cmd4(int cmd, int arg1, int arg2, int arg3, int arg4);
    through print_diag). NOTE: the last two only print on an error (CD timeout, file not
    found + root directory list) - set 1 when a disc does not boot. 1 = as before. */
 #ifndef SCD_DIAG_TEXT
-#define SCD_DIAG_TEXT 0
+#define SCD_DIAG_TEXT 1   /* SuperTux CD32X: diagnostics ON (was 0 in Hurrican) */
 #endif
 
 static void scd_diag_print(const char *msg)

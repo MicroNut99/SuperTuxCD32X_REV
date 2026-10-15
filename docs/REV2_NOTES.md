@@ -26,9 +26,17 @@ crosses a 1 MB bank is split.
 
 Nothing in the boot sequence calls any of this; the game does not call it yet either.
 
-Boot diagnostics, exactly as `DIAG_TEXT_HOWTO.md` (Micronut99): `KOBO_DIAG_TEXT 1` (green) and
-`KOBO_BOOT_TEXT 1` (white, already 1) in `cd32x/subcpu/main.c`; nothing else. `cd32x/sh2/` is
-untouched (CDLOADER.BIN identical); the game's own switch stays 0.
+Boot diagnostics: ALL of them on - the full set of docs/STX_HANDOFF.md / BOOT_PATH_NOTES.md
+section 7, the state R1a / R1b booted on the console with:
+- `KOBO_DIAG_TEXT 1` (`cd32x/subcpu/main.c`): the green lines, `STATE:`, the heartbeat
+- `KOBO_BOOT_TEXT 1` (`main.c`, already 1): main() does not switch the display off
+- `SCD_DIAG_TEXT 1` (`cd32x/subcpu/scd.c`): CKPT / INITCD / CD time-outs / file not found
+- `hw_md.s` `md_init_hw`: `0x8174` - the Genesis display ON from the start (Chilly's white lines)
+- `OJ_DIAG_TEXT 1` (`cd32x/sh2/cdloader_sh2.c`): the text stays IN FRONT of the splash
+- `-DOJ32X_DIAG_TEXT=1` (build.sh): the text stays until the game has started
+(A first REV2 zip had only the first two, as DIAG_TEXT_HOWTO.md says for the OpenLara /
+Cannonball stack. On this stack that hides everything: md_init_hw leaves the display off and the
+loader's splash covers the text - Fusion showed only the Tux loading screen.)
 
 `tools/check_boot.py` knows the four added blocks exactly: it takes them out and the rest of
 every boot file must still be Hurrican's byte for byte (checked: one changed byte anywhere else,
