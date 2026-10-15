@@ -35,6 +35,7 @@ static int border;
 
 int host_genesis_pixel(int x, int line, uint8_t rgb[3]);   /* game/yt_host.c (REV3) */
 uint8_t *host_cart(void);
+int host_pri;                          /* REV8: the 32X VDP's PRI bit (game/gen_level.c front_32x) */
 static const char *env(const char *n, const char *d) { const char *v = getenv(n); return v && *v ? v : d; }
 
 void plat_fatal(const char *msg) { fprintf(stderr, "FATAL: %s\n", msg); exit(1); }
@@ -179,10 +180,12 @@ static void save_frame(const uint8_t *buf, int shift)
 		{
 			const uint16_t c = shown_pal[px[x]] ? shown_pal[px[x]] : 0x0400;
 			uint8_t rgb[3] = { (uint8_t)((c & 31) << 3), (uint8_t)((c >> 5 & 31) << 3), (uint8_t)((c >> 10 & 31) << 3) };
-			/* REV3: a colour with the through bit shows the Genesis picture behind (32X manual,
-			 * "Priority"; the 32X is in front - DISPMODE PRI 0 in the game), where the Genesis
-			 * has a pixel; else the 32X colour (black for 0x8000) */
-			if (c & 0x8000) host_genesis_pixel(x, line, rgb);
+			/* REV8: the 32X manual's "Priority" (REV6 showed the old model was wrong): PRI 0 the
+			 * Genesis has priority, PRI 1 the 32X; a colour with the through bit goes to the other
+			 * side. The side in front shows, unless it is the Genesis with a see-through pixel
+			 * (colour 0 of its planes) - then the 32X colour behind it. */
+			const int front32 = (host_pri != 0) ^ ((c & 0x8000) != 0);
+			if (!front32) host_genesis_pixel(x, line, rgb);
 			fwrite(rgb, 1, 3, f);
 		}
 	}

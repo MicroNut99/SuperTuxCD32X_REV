@@ -126,6 +126,39 @@ THROUGH = 0x8000                       # REV3: a 32X colour with the through bit
                                        # "Priority"): its pixels show the Genesis picture behind
 
 
+def sky_shades(bgi, top, bot, back):
+    """REV8: a level's sky as 64 15-bit shades, top to bottom. A gradient level: SuperTux's own
+    two colours. A picture level: the picture's own colours - the averages of its top, middle and
+    bottom thirds joined smoothly - so the sky keeps the picture's look (its sky at the top, its
+    hills' or sea's colours lower down) without the picture."""
+    if bgi == 0xFFFF:
+        t, b = rgb_of(top), rgb_of(bot)
+        rgb = [[t[c] + (b[c] - t[c]) * s / 63 for c in range(3)] for s in range(64)]
+    else:
+        px, cols, bw, bh = back[bgi]
+        pal = np.array([rgb_of(struct.unpack(">H", cols[2 * i:2 * i + 2])[0]) if 2 * i + 2 <= len(cols) else (0, 0, 0)
+                        for i in range(64)], np.float64)
+        pic = np.frombuffer(px, np.uint8).reshape(bh, bw).astype(np.int64) - 192
+        img = pal[np.clip(pic, 0, 63)]
+        rows = img.mean(axis=1)                                   # one colour a picture row
+        # three stops - the average of the top, middle and bottom third at 1/6, 1/2, 5/6 of the
+        # height - joined smoothly: a clean gradient in the picture's colours (no hard bands)
+        stops = [rows[k * bh // 3:(k + 1) * bh // 3].mean(axis=0) for k in range(3)]
+        rgb = []
+        for s in range(64):
+            f = (s + 0.5) / 64 * 3 - 0.5                          # 0 .. 2 between the stops
+            f = min(2.0, max(0.0, f))
+            i = min(1, int(f))
+            u = f - i
+            u = u * u * (3 - 2 * u)                               # ease
+            rgb.append(stops[i] * (1 - u) + stops[i + 1] * u)
+    out = []
+    for c in rgb:
+        v = c555(*[int(max(0, min(255, x))) for x in c])
+        out.append(v or 0x0400)                                  # 0x0000 is see-through on the 32X
+    return out
+
+
 def build_level(lv, tdesc, frames, back, genesis=False):
     """genesis (REV3, OPTIONS - BACKGROUND GENESIS): the level's pictures WITHOUT the background
     picture - where it would show, colour 192 (all of 192-255 become THROUGH colours), so the
@@ -147,7 +180,10 @@ def build_level(lv, tdesc, frames, back, genesis=False):
     if genesis:
         bgblocks = [np.full((TILE, TILE), 192, np.uint8)]
         bg_of = lambda tx, ty: 0
-        colours = struct.pack(">64H", *([THROUGH] * 64))
+        # REV8: the sky is a 32X gradient, as in Sonic32X: 192-255 are 64 shades (line y of the
+        # view shows shade y * 64 / 176), each with the through bit - behind the Genesis planes
+        # (the 32X is in front during levels, PRI 1), seen where the level's tiles are see-through
+        colours = struct.pack(">64H", *[THROUGH | c for c in sky_shades(bgi, top, bot, back)])
     elif bgi != 0xFFFF:
         px, cols, bw, bh = back[bgi]
         pic = np.frombuffer(px, np.uint8).reshape(bh, bw)
@@ -335,13 +371,8 @@ def main():
         bgi, top, bot = struct.unpack(">HHH", lvb[8:14])
         # REV5: plane B always inside GENLVL.BIN (a picture too), so Draw: Genesis never needs the
         # picture's pack in the cart
-        pic = None
-        if bgi != 0xFFFF:
-            if bgi not in pic_cache:
-                pic_cache[bgi] = stx_genesis.picture_plane(*back[bgi])
-            pic = pic_cache[bgi]
-        gl, _ = stx_genesis.genesis_level(lg, cg, global_pal, grad=(top, bot) if bgi == 0xFFFF else None,
-                                          picture=pic)
+        # REV8: no Genesis sky - the 32X draws it (sky_shades); plane B is an empty map
+        gl, _ = stx_genesis.genesis_level(lg, cg, global_pal)
         files.append(("GENLVL.BIN", gl))
         gl_extra += len(gl)
         packs.append(make_pack(files))

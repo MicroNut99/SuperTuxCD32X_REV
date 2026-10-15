@@ -81,7 +81,8 @@ static void front_32x(int on)
 	*dispmode = on ? (uint16_t)(m | 0x0080) : (uint16_t)(m & ~0x0080);
 }
 #else
-static void front_32x(int on) { (void)on; }   /* the PC model composites with the 32X in front */
+extern int host_pri;
+static void front_32x(int on) { host_pri = on; }   /* the PC model composites by the PRI bit (game/host.c) */
 #endif
 
 /* ---------------------------------------------------------------- the 32X: a sprite layer */
@@ -93,6 +94,18 @@ static void front_32x(int on) { (void)on; }   /* the PC model composites with th
 #define GL_REF 0
 #endif
 
+/* REV8: the sky is the 32X's, as in Sonic32X: a gradient fixed to the screen - view line y is
+ * colour 192 + y * 64 / 176, the level's 64 sky shades (tools/stx_pack.py sky_shades), each with
+ * the through bit: behind the Genesis planes, seen where the level's tiles are see-through.
+ * Clearing a rectangle (the sprites drawn there last time) puts the sky back line by line. */
+static void sky_fill(int x, int y, int w, int h)
+{
+	if (y < 0) { h += y; y = 0; }
+	if (y + h > YT_VIEW_H) h = YT_VIEW_H - y;
+	for (int k = 0; k < h; k++)
+		yt_fill(x, y + k, w, 1, (uint8_t)(THROUGH + (y + k) * 64 / YT_VIEW_H));
+}
+
 void gl_begin(int cx, int cy, int in_loop)
 {
 	yt_fixed();
@@ -100,12 +113,12 @@ void gl_begin(int cx, int cy, int in_loop)
 	if (GL_REF) full_clear[b] = 1;
 	if (full_clear[b])
 	{
-		yt_fill(0, 0, YT_VIEW_W, YT_VIEW_H, THROUGH);
+		sky_fill(0, 0, YT_VIEW_W, YT_VIEW_H);
 		full_clear[b] = 0;
 	}
 	else
 		for (int i = 0; i < n_erase[b]; i++)
-			yt_fill(erase[b][i].x, erase[b][i].y, erase[b][i].w, erase[b][i].h, THROUGH);
+			sky_fill(erase[b][i].x, erase[b][i].y, erase[b][i].w, erase[b][i].h);
 	n_erase[b] = 0;
 	/* a frame drawn for a menu or the level's intro: words go over it - all of it next time */
 	if (!in_loop) full_clear[b] = 1;
@@ -248,7 +261,7 @@ static void upload(int cx, int cy)
 	/* REV5: plane B (picture or gradient) is always in GENLVL.BIN */
 	gen_cart_to_cram(48, G(gl_off[0] + 96), 16);
 	gen_cart_to_vram(PLANE_B, G(gl_off[7]), 64 * 32);
-	gen_cart_to_vram(0x1000, G(gl_off[8]), (unsigned)gl_gbn * 16u);
+	if (gl_gbn) gen_cart_to_vram(0x1000, G(gl_off[8]), (unsigned)gl_gbn * 16u);   /* REV8: none (the 32X sky) */
 	for (int i = 0; i < NCOLS; i++) col_at[i] = -1;
 	for (int k = 0; k < 16; k++) grp_frame[k] = -1;
 	n_cell_q = 0;

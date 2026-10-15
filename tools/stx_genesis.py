@@ -363,7 +363,8 @@ def genesis_level(level_bin, comp_bin, global_pal, grad=None, picture=None):
        0  "STGL", 4 version u16 (1), 6 level tiles u16 (T), 8 resources u16 (R + 1),
       10  map columns u16 (2 w), 12 rows u16 (2 h), 14 unique columns u16 (U), 16 groups u16 (G),
       18  plane B tiles u16, 20 plane B kind u16 (0 gradient, tied to the level's lines;
-          1 picture, 256 x 192 moving at the level's background speed; REV5: always here)
+          1 picture, 256 x 192 moving at the level's background speed; REV5: always here;
+          REV8: 2 none - an empty map, the 32X draws the sky)
       24  offsets u32: +0 CRAM (48 words: palettes 0-2, then 16 for palette 3 when plane B is
           here), +4 tiles (T x 32 bytes, for LEVEL_SLOTS[0..T)), +8 top entries ((R+1) x 2 words),
           +12 bottom entries ((R+1) x 2 words), +16 column index (2 w x u16), +20 columns
@@ -517,6 +518,11 @@ def genesis_level(level_bin, comp_bin, global_pal, grad=None, picture=None):
         kind = 1
     elif grad is not None:
         gb_cram, gb_map, gb_tiles, gb_n = gradient_plane(*grad)
+    else:
+        # REV8: no Genesis sky (the 32X draws it): plane B an empty map - tile 0 is the font's
+        # blank tile, all see-through - and palette 3 black
+        gb_cram, gb_map, gb_tiles, gb_n = [0] * 16, np.zeros((PLANE_H, PLANE_W), np.int64), b"", 0
+        kind = 2
 
     head_len = 60
     parts = []

@@ -205,7 +205,7 @@ void load_level(int li)
 	gen_bg_serial++;
 	const uint8_t *base = pack_base(li);
 	const uint8_t *g = pk_file(base, "GENLVL.BIN", 0);
-	if (!g || memcmp(g, "STGL", 4) || !be16(g + 18)) plat_fatal("GENLVL.BIN: NO GENESIS LEVEL");
+	if (!g || memcmp(g, "STGL", 4)) plat_fatal("GENLVL.BIN: NO GENESIS LEVEL");
 	gl_level = g;
 	level_n = li;
 	uint32_t csize;
