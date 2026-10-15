@@ -321,6 +321,7 @@ def main():
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import stx_genesis
     global_pal = rd("PALETTE.BIN")
+    pic_cache = {}
     for li in range(nlevels):
         lvb = rd("L%03d.BIN" % li)
         lb, cb, s = build_level(lvb, tdesc, frames, back)
@@ -332,7 +333,15 @@ def main():
         gen_extra += len(lg) + len(cg)
         # REV4: the level as Genesis tiles and map columns (tools/stx_genesis.py genesis_level)
         bgi, top, bot = struct.unpack(">HHH", lvb[8:14])
-        gl, _ = stx_genesis.genesis_level(lg, cg, global_pal, grad=(top, bot) if bgi == 0xFFFF else None)
+        # REV5: plane B always inside GENLVL.BIN (a picture too), so Draw: Genesis never needs the
+        # picture's pack in the cart
+        pic = None
+        if bgi != 0xFFFF:
+            if bgi not in pic_cache:
+                pic_cache[bgi] = stx_genesis.picture_plane(*back[bgi])
+            pic = pic_cache[bgi]
+        gl, _ = stx_genesis.genesis_level(lg, cg, global_pal, grad=(top, bot) if bgi == 0xFFFF else None,
+                                          picture=pic)
         files.append(("GENLVL.BIN", gl))
         gl_extra += len(gl)
         packs.append(make_pack(files))

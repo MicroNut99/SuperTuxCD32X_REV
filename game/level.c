@@ -136,8 +136,10 @@ static int back_home(int li)
 	if (!homes_read) read_homes();
 	if (li < 0 || li >= NLEVELS || !homes[li].back) return -1;
 	/* who needs the picture's pack: MOVES (only a moving picture), REV3's BACKGROUND GENESIS and
-	 * REV4's DRAW GENESIS (any picture) - never the title's demo (it never reads the disc) */
-	const int genesis = opt_parallax == 2 || opt_dma == 2;
+	 * (REV5: not DRAW GENESIS - its plane B is in the level's GENLVL.BIN, except for the title's
+	 * demo, drawn by the 32X) - never the title's demo (it never reads the disc) */
+	if (opt_dma == 2 && li != DEMO_LEVEL) return -1;
+	const int genesis = opt_parallax == 2;
 	if (genesis ? li == DEMO_LEVEL : !(opt_parallax == 1 && (homes[li].back & 0x80))) return -1;
 	const int b = NLEVELS + (homes[li].back & 0x7F) - 1;
 	if (b >= n_homes || homes_overlap(li, b)) return -1;
@@ -203,9 +205,11 @@ int back_w, back_h, back_stride;
  * (LEVELG.BIN / COMPG.BIN, tools/stx_pack.py); 0 = drawn as before */
 const uint8_t *gen_bg;
 /* REV4, OPTIONS - DRAW GENESIS: the level read as Genesis tiles and map columns (GENLVL.BIN,
- * tools/stx_genesis.py genesis_level) and its picture with one palette (GENBG1.BIN; 0 for a
- * gradient level - its plane B is in GENLVL.BIN); 0 = drawn by the 32X (game/gen_level.c) */
-const uint8_t *gl_level, *gl_bg1;
+ * tools/stx_genesis.py genesis_level; REV5: its plane B - picture or gradient - inside it too);
+ * 0 = drawn by the 32X (game/gen_level.c). gl_fell: Draw: Genesis is on but this level is
+ * drawn by the 32X (the timing line shows DX) */
+const uint8_t *gl_level;
+int gl_fell;
 unsigned gen_bg_serial;                /* + 1 each level read (the picture is uploaded again) */
 
 void load_level(int li)
@@ -215,19 +219,17 @@ void load_level(int li)
 	if (bg >= 0 && !home_cached(bg)) fetch(bg);     /* never overlaps the level (back_home) */
 	back_px = 0;
 	gen_bg = 0;
-	gl_level = gl_bg1 = 0;
+	gl_level = 0; gl_fell = 0;
 	gen_bg_serial++;
 	const uint8_t *base = pack_base(li);
 	if (opt_dma == 2 && li != DEMO_LEVEL)
 	{
-		/* REV4: the whole level on the Genesis - its GENLVL.BIN, and for a picture its GENBG1.BIN
-		 * (a gradient's plane B is in GENLVL.BIN); without them it is drawn by the 32X */
+		/* REV4: the whole level on the Genesis - its GENLVL.BIN (REV5: the background's plane B
+		 * inside it, no other pack needed); without it it is drawn by the 32X */
 		const uint8_t *g = pk_file(base, "GENLVL.BIN", 0);
-		if (g && !memcmp(g, "STGL", 4) && pk_file(base, "LEVELG.BIN", 0))
-		{
-			if (be16(g + 18)) gl_level = g;
-			else if (bg >= 0 && (gl_bg1 = pk_file(pack_base(bg), "GENBG1.BIN", 0)) != 0) gl_level = g;
-		}
+		if (g && !memcmp(g, "STGL", 4) && be16(g + 18) && pk_file(base, "LEVELG.BIN", 0) && pk_file(base, "COMPG.BIN", 0))
+			gl_level = g;
+		else gl_fell = 1;
 	}
 	if (gl_level) { }
 	else if (bg >= 0 && opt_parallax == 2)

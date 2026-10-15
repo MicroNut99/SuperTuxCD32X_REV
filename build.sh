@@ -1,5 +1,5 @@
 #!/bin/bash
-# SuperTux CD32X REV - builds the REV4 disc: the whole of SuperTux 0.1.3 (Icyisland's 26 levels,
+# SuperTux CD32X REV - builds the REV5 disc: the whole of SuperTux 0.1.3 (Icyisland's 26 levels,
 # both Bonus Islands, the title with its demo, world maps, bad guys, power-ups, saves), half size,
 # sharpened. REV is the rip and rebuild of R11's drawing (README.md). REV2 adds the Genesis
 # picture commands to the Sub-CPU / 68000 programs (tools/check_boot.py knows the exact blocks)
@@ -8,6 +8,8 @@
 # (tools/stx_genesis.py, docs/REV3_NOTES.md). REV4: OPTIONS - DRAW GENESIS puts the whole level
 # on the Genesis' planes, the 32X draws only what moves (game/gen_level.c, docs/REV4_NOTES.md);
 # it adds command 67 (columns into VRAM) to the Sub-CPU / 68000 programs - test it in Fusion first.
+# REV5: every level's GENLVL.BIN carries its own plane B (no picture pack needed), DG / DX on the
+# timing line, saves in the RAM cart's save area (piece 13) - docs/REV5_NOTES.md.
 #
 # The steps are Hurrican CD32X's build (= the OpenJazz port's J19b, the last disc proven on the
 # console), with SuperTux's data in place of Hurrican's:
@@ -29,7 +31,7 @@ SRC="${SUPERTUX:-$HERE/SuperTux-0.1.3}"
 OUT="$HERE/build"
 ROMS="$HERE/cd32x/subcpu/ROMS"
 MARKER="SH2-OPENLARA-CD-OL1-LOADER"
-DISC=SuperTuxREV4
+DISC=SuperTuxREV5
 mkdir -p "$OUT" "$ROMS"
 
 echo "==> boot path check (must be Hurrican CD32X's, unchanged)"

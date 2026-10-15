@@ -978,9 +978,12 @@ static void draw_status(void)
 		for (int k = 12; k >= 0; k -= 4) *e++ = hx[(pad_raw >> k) & 15];
 		*e = 0;
 		e = put_dec(put_str(e, " S"), pad_stale % 1000u, 1);   /* R9: old pad replies */
-		/* REV: OPTIONS - DRAW: D0 the CPU, D1 DMA rows, D! DMA once failed - the CPU copies */
+		/* REV: OPTIONS - DRAW: D0 the CPU, D1 DMA rows, D! DMA once failed - the CPU copies;
+		 * DG / DX below */
 		static const char *const ds[3] = { " D0", " D1", " D!" };
-		put_str(e, ds[yt_dma_state()]);
+		/* REV5: DG the level is drawn by the Genesis, DX Draw: Genesis is on but this level fell
+		 * back to the 32X */
+		put_str(e, gl_level ? " DG" : gl_fell ? " DX" : ds[yt_dma_state()]);
 	}
 	if (opt_timing) timing_line(l3);
 	else put_str(l3, "");

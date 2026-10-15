@@ -14,10 +14,10 @@
  * In a level, START: CONTINUE, RESTART LEVEL, OPTIONS, ABORT LEVEL (back to the map), MAIN MENU.
  * On a world map, START: CONTINUE, OPTIONS, QUIT GAME (saved).
  *
- * THE SAVES: as Hurrican CD32X's (P1p) - the Sega CD's backup RAM file of the unchanged Sub-CPU
- * program (cd32x/subcpu/main.c K36: command 56 loads it into the Sub-CPU's 4 KB buffer, 57 reads /
- * 58 writes a word of that buffer, 59 saves it). Hurrican keeps its table at byte 3968; SuperTux
- * R2 uses bytes 3072-3439 ("STX2"; R1's 128 bytes at 3840 are no longer read):
+ * THE SAVES (REV5): 368 bytes in the RAM cart's save area, piece 13 (cart 0x3FD000) - written
+ * with the platform layer's CMD 58 + 61 (save_store below), read straight from the cart. R2-REV3
+ * kept them in the Sega CD's backup RAM (CMD 56-59, Hurrican's way): that never worked on the
+ * console. The layout ("STX2"):
  *   0 "STX2"  4 music, timing (byte 5: bit 0 on, 1 moves, 2 steps, 3 classic; REV1: 4 worst,
  *             5 draw DMA; REV3: 6 background genesis; REV4: 7 draw genesis), A/B swap, lives  8 ten high scores {name[3], score u32, level u8}
  *   88 seven slots of 40 bytes {used, map, tile x, tile y, lives, bonus, score u32, coins u16,
@@ -29,7 +29,6 @@
 /* ------------------------------------------------------------------ saves */
 #define HS_N 10
 #define SAVE_BYTES 368
-#define SAVE_WORD0 1536                /* byte 3072 of the backup RAM file's buffer */
 typedef struct { char name[4]; uint32_t score; uint8_t level; } HiScore;
 static HiScore hs[HS_N];
 static int hs_new = -1;
@@ -97,42 +96,32 @@ static void save_pack(uint8_t *b)
 }
 
 #ifdef OJ32X_MARS
-#define SV_COMM0  (*(volatile uint16_t *)0x20004020)
-#define SV_COMM2  (*(volatile uint16_t *)0x20004022)
-#define SV_COMM8  (*(volatile uint16_t *)0x20004028)
-#define SV_COMM12 (*(volatile uint16_t *)0x2000402C)
-static int sv_cmd(int cmd)             /* Hurrican's hs_cmd: the platform layer's command protocol */
-{
-	SV_COMM0 = (uint16_t)cmd;
-	for (uint32_t n = 0; n < 8000000u && SV_COMM0 != 0; n++) { }
-	return SV_COMM0 == 0;
-}
+/* REV4: the saves and settings live in the RAM cart's save area (cart 0x3F0000, 4 KB pieces),
+ * piece 13 - the way OpenLara (OL-9), OpenJazz (J13) and Hurrican keep theirs, through the
+ * platform layer's own calls (port/plat_mars.c CMD 58 = a word into the Sub-CPU's 4 KB buffer,
+ * CMD 61 = the buffer into a piece of the cart, read back and compared). R2-REV3 used the Sega
+ * CD's internal backup RAM (CMD 56-59): it never worked on the console - the OpenJazz notes say
+ * the same of theirs (8 KB shared by every game; the BIOS file calls). Pieces 0-9 are OpenJazz /
+ * Holiday Hare's and 10 the platform layer's settings; 13 is SuperTux's (the docs repo's ledger
+ * lists the pieces in use - the cart is shared by the CD32X games). Reading needs no
+ * command: the SH2 reads the cart (cache-through, the 68000 wrote it). */
+#define SAVE_PIECE 13
+int plat_save_put_word(int index, int value);   /* port/plat_mars.c (CMD 58) */
+int plat_save_piece(int piece);                 /* port/plat_mars.c (CMD 61) */
 static void save_load(void)
 {
 	static uint8_t b[SAVE_BYTES];
-	SV_COMM12 = 0;
-	if (!sv_cmd(56)) { save_unpack((const uint8_t *)"none"); return; }
-	for (int i = 0; i < SAVE_BYTES / 2; i++)
-	{
-		SV_COMM2 = (uint16_t)(SAVE_WORD0 + i);
-		if (!sv_cmd(57)) { save_unpack((const uint8_t *)"none"); return; }
-		const uint16_t v = SV_COMM8;
-		b[2 * i] = (uint8_t)(v >> 8); b[2 * i + 1] = (uint8_t)v;
-	}
-	save_unpack(b);
+	const volatile uint8_t *p = (const volatile uint8_t *)(0x223F0000u + SAVE_PIECE * 4096u);
+	for (int i = 0; i < SAVE_BYTES; i++) b[i] = p[i];
+	save_unpack(b);                    /* not "STX2" (never saved, a blank cart): the defaults */
 }
 void save_store(void)
 {
 	static uint8_t b[SAVE_BYTES];
 	save_pack(b);
 	for (int i = 0; i < SAVE_BYTES / 2; i++)
-	{
-		SV_COMM8 = (uint16_t)(b[2 * i] << 8 | b[2 * i + 1]);
-		SV_COMM2 = (uint16_t)(SAVE_WORD0 + i);
-		if (!sv_cmd(58)) return;
-	}
-	SV_COMM12 = 0;
-	sv_cmd(59);
+		if (!plat_save_put_word(i, b[2 * i] << 8 | b[2 * i + 1])) return;
+	plat_save_piece(SAVE_PIECE);
 }
 #else
 static void save_path(char *p, size_t n) { snprintf(p, n, "%s/STXSAVE.BIN", getenv("ST_DIR") ? getenv("ST_DIR") : "."); }
@@ -476,7 +465,7 @@ void options_page(BgFn bg)
 		}
 		list_style();
 		m_lr = 1;                      /* LEFT / RIGHT change a setting */
-		const int pick = menu_choose("OPTIONS", items, ns, at, bg, "LEFT/RIGHT/A CHANGE  B BACK");
+		const int pick = menu_choose("OPTIONS", items, ns, at, bg, "L/R CHANGE  B BACK  DRAW: NEXT LEVEL");
 		const int c = pick < 0 ? -1 : shown[pick];
 		const int d = menu_dir ? menu_dir : 1;
 		m_lr = 0;

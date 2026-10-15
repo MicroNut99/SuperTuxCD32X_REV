@@ -207,7 +207,7 @@ int  level_hidden(int tx, int ty);              /* a bouncing brick's cell: draw
 extern const uint8_t *back_px;
 extern const uint8_t *gen_bg;          /* REV3: GENBG.BIN of the level read, 0 = none (game/level.c) */
 extern unsigned gen_bg_serial;
-extern const uint8_t *gl_level, *gl_bg1; /* REV4: GENLVL.BIN / GENBG1.BIN of the level read (game/level.c) */
+extern const uint8_t *gl_level; extern int gl_fell; /* REV4: GENLVL.BIN / GENBG1.BIN of the level read (game/level.c) */
 unsigned level_pic(int c);             /* REV4: a cell's YATSSD picture number now / as read */
 unsigned level_pic_orig(int c);
 /* REV4, game/gen_level.c - OPTIONS - DRAW GENESIS: the level on the Genesis' planes */

@@ -310,6 +310,19 @@ def _plane_picture(rgb, slot, base, cap, dither=True):
     return _cram_words(cram), plane, b"".join(_tile_bytes(a) for a in store), len(store)
 
 
+def picture_plane(px, pal555, w, h):
+    """REV5: a background picture as plane B parts (palette 3 CRAM words, 64 x 32 map, tiles, n) -
+    used by GENBG1.BIN and embedded in every picture level's GENLVL.BIN"""
+    idx = np.frombuffer(px, np.uint8).reshape(h, w).astype(np.int64)
+    cols = np.frombuffer(pal555, ">u2").astype(np.int64)
+    lut = np.zeros((256, 3))
+    for i in range(192, 256):
+        c = cols[i - 192] if i - 192 < len(cols) else 0
+        lut[i] = ((c & 31) << 3, ((c >> 5) & 31) << 3, ((c >> 10) & 31) << 3)
+    rgb = _resize(lut[idx], OUT_W, OUT_H)
+    return _plane_picture(rgb, 3, BG4_BASE, BG4_MAX)
+
+
 def genesis_background1(px, pal555, w, h):
     """REV4: the background picture with ONE palette (slot 3) and at most BG4_MAX tiles - the other
     three palettes and the rest of VRAM belong to the level. GENBG1.BIN: like GENBG.BIN (64 CRAM
@@ -320,8 +333,7 @@ def genesis_background1(px, pal555, w, h):
     for i in range(192, 256):
         c = cols[i - 192] if i - 192 < len(cols) else 0
         lut[i] = ((c & 31) << 3, ((c >> 5) & 31) << 3, ((c >> 10) & 31) << 3)
-    rgb = _resize(lut[idx], OUT_W, OUT_H)
-    cram16, plane, tbytes, n = _plane_picture(rgb, 3, BG4_BASE, BG4_MAX)
+    cram16, plane, tbytes, n = picture_plane(px, pal555, w, h)
     out = bytearray(b"STGB" + struct.pack(">HH", n, 1))
     out += struct.pack(">64H", *([0] * 48 + cram16))
     out += plane.astype(">u2").tobytes()
@@ -342,7 +354,7 @@ def gradient_plane(top555, bot555, rows_px=240):
     return _plane_picture(img, 3, BG4_BASE, BG4_MAX)
 
 
-def genesis_level(level_bin, comp_bin, global_pal, grad=None):
+def genesis_level(level_bin, comp_bin, global_pal, grad=None, picture=None):
     """REV4: GENLVL.BIN - a level's see-through pictures (stx_pack.py LEVELG.BIN / COMPG.BIN) as
     Genesis tiles for plane A (palettes 0-2), each resource's 2 x 2 map entries, the level's map
     as COLUMNS (identical columns once: game/gen_level.c streams one per 8 pixels scrolled), the
@@ -350,7 +362,8 @@ def genesis_level(level_bin, comp_bin, global_pal, grad=None):
     plane B. Big-endian:
        0  "STGL", 4 version u16 (1), 6 level tiles u16 (T), 8 resources u16 (R + 1),
       10  map columns u16 (2 w), 12 rows u16 (2 h), 14 unique columns u16 (U), 16 groups u16 (G),
-      18  plane B tiles u16 (0 = the level uses its picture's GENBG1.BIN), 20 pad u16
+      18  plane B tiles u16, 20 plane B kind u16 (0 gradient, tied to the level's lines;
+          1 picture, 256 x 192 moving at the level's background speed; REV5: always here)
       24  offsets u32: +0 CRAM (48 words: palettes 0-2, then 16 for palette 3 when plane B is
           here), +4 tiles (T x 32 bytes, for LEVEL_SLOTS[0..T)), +8 top entries ((R+1) x 2 words),
           +12 bottom entries ((R+1) x 2 words), +16 column index (2 w x u16), +20 columns
@@ -498,7 +511,11 @@ def genesis_level(level_bin, comp_bin, global_pal, grad=None):
 
     # plane B for a gradient level
     gb_cram, gb_map, gb_tiles, gb_n = ([], None, b"", 0)
-    if grad is not None:
+    kind = 0
+    if picture is not None:
+        gb_cram, gb_map, gb_tiles, gb_n = picture
+        kind = 1
+    elif grad is not None:
         gb_cram, gb_map, gb_tiles, gb_n = gradient_plane(*grad)
 
     head_len = 60
@@ -529,7 +546,7 @@ def genesis_level(level_bin, comp_bin, global_pal, grad=None):
         gb += struct.pack(">HHHHI", ms, nf, fs, nt, slab_at + off)
     parts[6] = bytes(gb)
     head = b"STGL" + struct.pack(">HHHHHHHHH", 1, len(s_store), nres + 1, 2 * W, rows, len(col_store),
-                                 len(grp_out), gb_n, 0)
+                                 len(grp_out), gb_n, kind)
     head += b"\0" * (24 - len(head))
     head += struct.pack(">9I", *offs[:9])
     out = bytearray(head)

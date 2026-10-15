@@ -8,7 +8,7 @@
  *     genesis_level): palettes 0-2, the level's tiles, each picture's 2 x 2 map entries, the map
  *     as columns (identical ones once), the animations as groups of tiles whose frames are
  *     uploaded over them;
- *   - plane B (0xA000): the background - the picture's GENBG1.BIN (palette 3) or, for a gradient
+ *   - plane B (0xA000): the background (REV5: always in GENLVL.BIN, kind 1 picture / 0 gradient) - was the picture's GENBG1.BIN (palette 3) or, for a gradient
  *     level, the gradient inside GENLVL.BIN;
  *   - the 32X: only what moves (game/game.c gl_world), on a fixed 320 x 176 sprite layer in the
  *     canvas; everything else in it is colour 192 = 0x8000, the through bit: the Genesis shows
@@ -48,7 +48,7 @@
 #define MAX_ERASE 96                   /* rectangles a buffer clears (more: the whole view) */
 
 static uint32_t gl_off[9];             /* GENLVL.BIN's offsets (see tools/stx_genesis.py) */
-static int gl_T, gl_R, gl_C, gl_rows, gl_U, gl_G, gl_gbn;
+static int gl_T, gl_R, gl_C, gl_rows, gl_U, gl_G, gl_gbn, gl_kind;
 static const uint8_t *gl_seen;         /* the GENLVL.BIN uploaded (0: none) */
 static unsigned gl_serial = 0xFFFFFFFFu;
 static int gl_on;                      /* the Genesis display shows the level */
@@ -120,7 +120,7 @@ static unsigned slot_tile(int i) { return i < SLOTS1 ? 576u + (unsigned)i : 1408
 static void read_header(void)
 {
 	gl_T = be16(G(6)); gl_R = be16(G(8)); gl_C = be16(G(10)); gl_rows = be16(G(12));
-	gl_U = be16(G(14)); gl_G = be16(G(16)); gl_gbn = be16(G(18));
+	gl_U = be16(G(14)); gl_G = be16(G(16)); gl_gbn = be16(G(18)); gl_kind = be16(G(20));
 	for (int i = 0; i < 9; i++) gl_off[i] = be32(G(24 + 4 * i));
 	if (gl_G > 16) gl_G = 16;
 }
@@ -191,7 +191,7 @@ static void scroll_to(int cx, int cy)
 {
 	const uint16_t ha = (uint16_t)(-cx & 0x3FF), va = (uint16_t)((cy - 12) & 0x3FF);
 	uint16_t hb, vb;
-	if (gl_bg1)
+	if (gl_kind == 1)
 	{
 		/* the picture as REV3: at the level's background speed, 0.8 x the size; the level's
 		 * height mapped onto the 16 lines the 192-line picture can move */
@@ -226,19 +226,10 @@ static void upload(int cx, int cy)
 	const int n1 = gl_T < SLOTS1 ? gl_T : SLOTS1;
 	gen_cart_to_vram(slot_tile(0) * 32u, G(gl_off[1]), (unsigned)n1 * 16u);
 	if (gl_T > SLOTS1) gen_cart_to_vram(slot_tile(SLOTS1) * 32u, G(gl_off[1] + (uint32_t)n1 * 32u), (unsigned)(gl_T - SLOTS1) * 16u);
-	if (gl_bg1)
-	{
-		const unsigned n = be16(gl_bg1 + 4);
-		gen_cart_to_cram(48, gl_bg1 + 8 + 96, 16);
-		gen_cart_to_vram(PLANE_B, gl_bg1 + 136, 64 * 32);
-		gen_cart_to_vram(0x1000, gl_bg1 + 4232, n * 16u);
-	}
-	else
-	{
-		gen_cart_to_cram(48, G(gl_off[0] + 96), 16);
-		gen_cart_to_vram(PLANE_B, G(gl_off[7]), 64 * 32);
-		gen_cart_to_vram(0x1000, G(gl_off[8]), (unsigned)gl_gbn * 16u);
-	}
+	/* REV5: plane B (picture or gradient) is always in GENLVL.BIN */
+	gen_cart_to_cram(48, G(gl_off[0] + 96), 16);
+	gen_cart_to_vram(PLANE_B, G(gl_off[7]), 64 * 32);
+	gen_cart_to_vram(0x1000, G(gl_off[8]), (unsigned)gl_gbn * 16u);
 	for (int i = 0; i < NCOLS; i++) col_at[i] = -1;
 	for (int k = 0; k < 16; k++) grp_frame[k] = -1;
 	n_cell_q = 0;

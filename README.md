@@ -22,6 +22,7 @@
 ## REV rounds
 | Round | What was ripped out and what replaced it |
 |---|---|
+| REV5 | **Fixes for REV4 on the console** (`docs/REV5_NOTES.md`): *Draw: Genesis* no longer needs the background picture's own pack in the cart - every level now carries its Genesis background inside its own data, so the level can't fall back to the 32X when the picture's pack is not there. The timing line shows **DG** (the Genesis is drawing this level) or **DX** (Draw: Genesis is on but this level was drawn by the 32X). The options menu says a Draw / Background change applies from the next level. **Saves fixed:** they now go to the RAM cart's save area (piece 13, the way OpenJazz and OpenLara save), not the Sega CD's backup RAM, which never worked. No boot stack changes. |
 | REV4 | **The rip and tear: the level on the Genesis** (`docs/REV4_NOTES.md`): *Options → Draw: Genesis* puts the whole level on the Genesis' plane A and its background on plane B; the Genesis chip scrolls both, the way Sonic CD does. The 32X draws only what moves - Tux, the bad guys, bullets, coins in flight, snow, clouds, scores - and clears just those spots again. No canvas move, no tile redraws, no hitch. The level's colours are the Genesis' (3 palettes of 15 for the level, 1 for the background); the sprites keep the 32X's 256. One more command for the boot stack: 67, map columns into video RAM. |
 | REV3 | **The first level picture on the Genesis** (`docs/REV3_NOTES.md`): *Options → Background: Genesis* puts a level's background picture on the Genesis' plane B, where the Genesis chip scrolls it at the level's own background speed (SuperTux's parallax) for free. The 32X draws the level on top with see-through colours where the picture shows. The sideways shift redraws far fewer cells: on the PC, level 1's worst frame drops from 210 cells to 69 when the shift redraws instead of moving the picture. Uses REV2's commands for the first time. |
 | REV2 | **The Genesis picture commands** (`docs/REV2_NOTES.md`): the SH2 can now upload tiles and maps from the RAM cart into the Genesis video RAM (63), set single words (62), load Genesis colours (64), set video registers (65) and the vertical scroll (66) - through the 68000 listener's existing VDP routines plus one new one (vertical scroll RAM). Boot diagnostics on (green and white text). **This disc is a boot test for Fusion:** it must start exactly as before. |
@@ -34,7 +35,7 @@ REV2 starts the rebuild: the commands the Genesis planes need, tested for bootin
 
 SuperTux 0.1.3 ("Milestone 1", 2004 – the classic platformer with Tux) on the **Sega CD32X**,
 drawn with Victor Luchits' **YATSSD** tile renderer on the boot, cart and Sub-CPU layers of the
-Hurrican CD32X port. **Version REV4 (from R11).** The whole game runs from one CD: the title with its demo
+Hurrican CD32X port. **Version REV5 (from R11).** The whole game runs from one CD: the title with its demo
 level, Icyisland and both Bonus Islands with their world maps, all 76 levels, every bad guy and
 power-up, CD music, PCM sound effects, saving and high scores. The levels are kept in a 4 MB RAM
 cart once they have been read from the disc.
@@ -77,7 +78,7 @@ libxmp-lite), and so are the sound effects, the pictures and the splash.
 1. The first run fetches SuperTux 0.1.3.
 2. The build converts the data, makes the splash, the sound effects and the CD tracks, checks
    the game on the PC (`host/`), builds the SH2 program, the loader and the Sub-CPU side.
-3. **REV4: run `cd32x/subcpu/SuperTuxREV4.cue` in Fusion first** (boot test: it adds command 67), then burn it (with its `.bin`). It has the data track and the 12
+3. **REV5: `cd32x/subcpu/SuperTuxREV5.cue`** - no boot stack changes since REV4 (which booted), so run it in Fusion as usual, then burn it (with its `.bin`). It has the data track and the 12
    music tracks.
 
 `DATA_ONLY=1 ./build.sh` stops after the data and the PC check (no Sega toolchain needed).
@@ -266,6 +267,7 @@ console.
 | R9 | Finding the stuck buttons: the timing panel counts pad replies that came back old (S); Options → Motion turns R6's smooth drawing off to compare. |
 | R10 | Options → Scroll RING: the picture wraps up and down, so the view never has to be shifted when Tux jumps; sideways shifts redraw only what differs and happen early on quiet frames; a strip of old picture (R4–R9) fixed. |
 | R11 | Options → Level Select (from the title): any of the 76 levels. |
+| **REV5** | Draw: Genesis keeps the level on the Genesis (its background inside the level's data); DG / DX on the timing line; saves in the RAM cart's save area. |
 | **REV4** | Options → Draw: Genesis - the level on the Genesis' planes, the 32X draws only the sprites. Command 67 (columns into VRAM). |
 | **REV3** | Options → Background: Genesis - the background picture on the Genesis' plane B, scrolled by the Genesis chip; the level drawn over it by the 32X. |
 | **REV2** | The Genesis picture commands 62-66 (Sub-CPU) and the 68000's vertical-scroll write; boot diagnostics on. A boot test for Fusion. |
@@ -287,7 +289,7 @@ console.
 | `tools/stx_convert.py`, `stx_pack.py` | SuperTux 0.1.3 → the 32X's data; the disc's files and the cart layout |
 | `tools/make_stx_sfx.py`, `make_stx_splash.py`, `stx_music.sh` | sound effects, the splash, the CD tracks |
 | `tools/check_boot.py`, `check_sdram_code.py`, `where.sh` | build checks; naming the addresses on a red exception screen |
-| `docs/` | developer notes: `REV4_NOTES.md`, `REV3_NOTES.md`, `REV2_NOTES.md`, `REV1_NOTES.md`, `STX_HANDOFF.md`, `R11_NOTES.md`, `R10_NOTES.md`, `R9_NOTES.md`, `R8_NOTES.md`, `R7_NOTES.md`, `R6_NOTES.md`, `R5_NOTES.md`, `R4_NOTES.md`, `R3_NOTES.md`, `R2_NOTES.md`, `R1B_NOTES.md`, `BOOT_PATH_NOTES.md` |
+| `docs/` | developer notes: `REV5_NOTES.md`, `REV4_NOTES.md`, `REV3_NOTES.md`, `REV2_NOTES.md`, `REV1_NOTES.md`, `STX_HANDOFF.md`, `R11_NOTES.md`, `R10_NOTES.md`, `R9_NOTES.md`, `R8_NOTES.md`, `R7_NOTES.md`, `R6_NOTES.md`, `R5_NOTES.md`, `R4_NOTES.md`, `R3_NOTES.md`, `R2_NOTES.md`, `R1B_NOTES.md`, `BOOT_PATH_NOTES.md` |
 
 ## Credits
 - **SuperTux** – Bill Kendrick (original author), Tobias Glaesser (project leader), Ricardo Cruz
