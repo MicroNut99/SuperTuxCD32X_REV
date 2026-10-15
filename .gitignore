@@ -1,0 +1,21 @@
+# SuperTux itself is fetched, not stored (tools/stx_fetch.sh)
+SuperTux-0.1.3/
+# build output
+build/
+build_log.txt
+*.o
+*.elf
+*.map
+cd32x/subcpu/ROMS/
+cd32x/subcpu/cd/
+cd32x/subcpu/*.iso
+cd32x/subcpu/*.bin
+cd32x/subcpu/*.cue
+discs/
+__pycache__/
+host/stx_host
+host/stx_asan
+mars/obj/
+mars/stx32x.*
+mars/OPENJAZZ.32X
+mars/report.txt
