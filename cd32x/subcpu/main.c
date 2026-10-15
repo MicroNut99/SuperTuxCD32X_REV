@@ -84,13 +84,17 @@ extern int do_md_cmd3(int cmd, int arg1, int arg2, int arg3);
 #define MD_CMD_INSTALL_EXC    31         /* HW1: 68K exception trap (K29), prints 68K EXC in red */
 #define MD_CMD_SET_VDP_REG    34
 #define MD_CMD_START_D32XR    35         /* D32X M1: 68K -> D32XR's _start (never returns) */
+#define MD_CMD_SET_VRAM        5         /* hw_md.s set_vram(addr, word) - Chilly's, unused until REV2 */
+#define MD_CMD_COPY_VRAM       7         /* hw_md.s copy_vram(addr, src, words) */
+#define MD_CMD_SET_PALETTE    12         /* hw_md.s set_palette(src, index, count) */
+#define MD_CMD_SET_VSRAM      36         /* SuperTux REV2: hw_md.s set_vsram(addr, word) */
 /* KOBO K19: hw_md.s set_vdp_reg - one VDP register word */
 
 /* KOBO K19 - GREEN DIAGNOSTIC TEXT.  1 = printed as before (C on the pad shows/hides it).
    0 = print_diag() prints nothing at all: every print_diag() call stays in the code, so
    setting 1 again brings all the text back.  (Chilly's white 32X start-up messages come
    from hw_md.s and are not affected.) */
-#define KOBO_DIAG_TEXT        0          /* OJ-J4B: on - green diagnostic text (CD32X boot handoff: diagnostics = 1) */
+#define KOBO_DIAG_TEXT        1          /* OJ-J4B: on - green diagnostic text (CD32X boot handoff: diagnostics = 1) */
 
 /* K30 - BOOT TEXT.  0 = the Genesis display is switched OFF at the very start of main(), so
    neither the green text nor Chilly's white 32X start-up messages appear (dev request): the
@@ -955,6 +959,58 @@ int main(void)
                WHY: the 32X priority bit alone did not hide the text reliably (K17/K18). */
             int on = do_md_cmd1(MD_CMD_READ_32X_16, 0xA15122) & 1;
             do_md_cmd1(MD_CMD_SET_VDP_REG, on ? 0x8174 : 0x8134);
+            do_md_cmd2(MD_CMD_WRITE_32X_16, 0xA15120, 0);
+        }
+        /* ---------------------------------------------------------------------------------
+           SuperTux REV2 - THE GENESIS PICTURE FOR THE SH2 (commands 62-66).
+           The 68000 listener could always write the Genesis VDP (Chilly's set_vram /
+           copy_vram / set_palette, Kobo's set_vdp_reg) but no SH2 command reached them: the
+           SH2 could only switch the Genesis text on / off (52).  These five let the game use
+           the Genesis planes - tiles and maps uploaded from the RAM cart, scrolled by
+           register.  They run only when the SH2 sends them, i.e. after the game has started:
+           nothing in the boot sequence calls them.  Parameters as the other commands: COMM2
+           (16 bits) and COMM8 (32 bits: COMM8 and COMM10), written by the SH2 BEFORE COMM0;
+           done = COMM0 cleared.  Cart sources are read by the 68000 through the 32X bank
+           window 0x900000 (RV 0 - as CMD 46's read-back), so the SH2 is never locked out.
+             62  VRAM word     COMM2 = VRAM byte address, COMM8 (high 16) = the word
+             63  cart -> VRAM  COMM2 = VRAM byte address, COMM8L = words << 22 | cart offset
+                               (even, < 4 MB; 1..1023 words); reply COMM12 = 1 ok, 0 refused
+             64  cart -> CRAM  COMM2 = first colour (0-63), COMM8L = count << 22 | cart offset
+                               (1..64 colours); reply COMM12 = 1 ok, 0 refused
+             65  VDP register  COMM2 = 0x8000 | reg << 8 | value (registers 0-23 only)
+             66  VSRAM word    COMM2 = VSRAM byte address (0 plane A, 2 plane B), COMM8 (high
+                               16) = the vertical scroll
+           A copy that crosses a 1 MB bank of the window is done in two parts. */
+        else if (cmd == 62 || cmd == 66) {
+            int addr = do_md_cmd1(MD_CMD_READ_32X_16, 0xA15122) & 0xFFFF;
+            int word = do_md_cmd1(MD_CMD_READ_32X_16, 0xA15128) & 0xFFFF;
+            if (cmd == 62) do_md_cmd2(MD_CMD_SET_VRAM, addr & 0xFFFE, word);
+            else do_md_cmd2(MD_CMD_SET_VSRAM, addr & 0x7E, word);
+            do_md_cmd2(MD_CMD_WRITE_32X_16, 0xA15120, 0);
+        }
+        else if (cmd == 63 || cmd == 64) {
+            int dst = do_md_cmd1(MD_CMD_READ_32X_16, 0xA15122) & 0xFFFF;
+            uint32_t p = (uint32_t)do_md_cmd1(MD_CMD_READ_32X_32, 0xA15128);
+            uint32_t coff = p & 0x3FFFFF;
+            int n = (int)(p >> 22);
+            int ok = n > 0 && !(coff & 1) && (cmd == 63 ? !(dst & 1) : (dst < 64 && dst + n <= 64));
+            while (ok && n > 0) {
+                /* the part inside this 1 MB bank of the window */
+                int fit = (int)((0x100000 - (coff & 0xFFFFF)) >> 1);
+                int k = n < fit ? n : fit;
+                do_md_cmd2(MD_CMD_WRITE_32X_16, 0xA15104, (int)(coff >> 20) & 3);
+                if (cmd == 63) do_md_cmd3(MD_CMD_COPY_VRAM, dst, 0x900000 + (coff & 0xFFFFF), k);
+                else do_md_cmd3(MD_CMD_SET_PALETTE, 0x900000 + (coff & 0xFFFFF), dst, k);
+                n -= k;
+                coff += (uint32_t)k * 2;
+                dst += cmd == 63 ? k * 2 : k;
+            }
+            do_md_cmd2(MD_CMD_WRITE_32X_16, 0xA1512C, ok);
+            do_md_cmd2(MD_CMD_WRITE_32X_16, 0xA15120, 0);
+        }
+        else if (cmd == 65) {
+            int w = do_md_cmd1(MD_CMD_READ_32X_16, 0xA15122) & 0xFFFF;
+            if ((w & 0xE000) == 0x8000 && ((w >> 8) & 0x1F) <= 23) do_md_cmd1(MD_CMD_SET_VDP_REG, w);
             do_md_cmd2(MD_CMD_WRITE_32X_16, 0xA15120, 0);
         }
         else if (cmd == 48) {
