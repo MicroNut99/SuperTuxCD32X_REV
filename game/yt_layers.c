@@ -764,6 +764,14 @@ int yt_sprite(int vx, int vy, int w, int h, const uint8_t *pixels)
 		}
 		mark_lines(window_canvas_x + x0, line_of(y0), x1 - x0, y1 - y0, no_mark);
 		STAT(1, (x1 - x0) * (y1 - y0));
+		if (!no_mark && rect_log_on && rect_n < YT_RECTS)
+		{
+			/* REV4: logged too (the sprite layer clears what it drew; the foreground tiles go
+			 * over it like over any sprite) */
+			rect_xy[rect_n][0] = (int16_t)x0; rect_xy[rect_n][1] = (int16_t)y0;
+			rect_xy[rect_n][2] = (int16_t)(x1 - x0); rect_xy[rect_n][3] = (int16_t)(y1 - y0);
+			rect_n++;
+		}
 		return 1;
 	}
 	rect_t clip;
@@ -819,6 +827,33 @@ int yt_sprite(int vx, int vy, int w, int h, const uint8_t *pixels)
 		rect_n++;
 	}
 	return 1;
+}
+
+/* REV4, OPTIONS - DRAW GENESIS (game/gen_level.c): the level is on the Genesis; the canvas is a
+ * fixed 320 x 176 sprite layer (no scrolling, line g = view line g), cleared where sprites were */
+void yt_fixed(void)
+{
+	cam_x = cam_y = 0;
+	top_h = top_v = 0;
+	window_canvas_x = window_canvas_y = 0;
+	cur = plat_back_index() & 1;
+	rec = bands[cur];
+	kp = kept[cur];
+	ring = 0;
+	no_mark = 0;
+	draw_setScissor(0, 0, YT_VIEW_W, YT_VIEW_H);
+}
+
+/* a rectangle of the view (clipped) filled with one colour */
+void yt_fill(int x, int y, int w, int h, uint8_t colour)
+{
+	if (x < 0) { w += x; x = 0; }
+	if (y < 0) { h += y; y = 0; }
+	if (x + w > YT_VIEW_W) w = YT_VIEW_W - x;
+	if (y + h > YT_VIEW_H) h = YT_VIEW_H - y;
+	if (w <= 0 || h <= 0) return;
+	uint8_t *c = yt_canvas();
+	for (int k = 0; k < h; k++) yt_fill_row(c + (y + k) * CANVAS_W + x, w, colour);
 }
 
 void yt_screen(void)

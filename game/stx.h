@@ -207,6 +207,16 @@ int  level_hidden(int tx, int ty);              /* a bouncing brick's cell: draw
 extern const uint8_t *back_px;
 extern const uint8_t *gen_bg;          /* REV3: GENBG.BIN of the level read, 0 = none (game/level.c) */
 extern unsigned gen_bg_serial;
+extern const uint8_t *gl_level, *gl_bg1; /* REV4: GENLVL.BIN / GENBG1.BIN of the level read (game/level.c) */
+unsigned level_pic(int c);             /* REV4: a cell's YATSSD picture number now / as read */
+unsigned level_pic_orig(int c);
+/* REV4, game/gen_level.c - OPTIONS - DRAW GENESIS: the level on the Genesis' planes */
+void gl_begin(int cx, int cy, int in_loop);  /* a level frame: the 32X canvas as a sprite layer */
+void gl_collect(int cx, int cy);       /* the rectangles just drawn (yt_rect) - cleared next time */
+void gl_present(void);                 /* from present_view: what the Genesis shows with it */
+void gl_after_flip(uint32_t ms);       /* from the game loop after the flip: scroll, columns */
+void gl_cell_changed(int c);           /* game/level.c: a cell's picture changed */
+void gl_map_reset(void);               /* game/level.c: every cell back as read */
 extern int back_w, back_h, back_stride;    /* 1 background-tm, 2 interactive-tm, 3 foreground-tm */
 extern void (*level_progress)(int done, int total);   /* called after each 32 KB read from the disc */
 /* the platform part (game/yt_mars.c, game/host.c): pieces first .. first + n - 1 of disc file
@@ -270,7 +280,7 @@ extern fx scroll_x;                    /* the camera, units (World::scrolling) *
 extern int cam_y;                      /* units (ours: the 32X shows 352 of SuperTux's 480 lines) */
 extern uint32_t game_ms, global_frame;
 extern int opt_music, opt_timing, opt_swap, opt_lives, opt_parallax, opt_smooth, opt_ring;
-extern int opt_dma;                    /* REV: OPTIONS - DRAW <DMA> (game/yt_layers.c) */
+extern int opt_dma;                    /* REV: OPTIONS - DRAW <CPU> 0 / <DMA> 1 (game/yt_layers.c); REV4: <GENESIS> 2 */
 void trybreakbrick(int x, int y, int small, int dir);
 void tryemptybox(int x, int y, int dir);
 void trygrabdistro(int x, int y, int bounce);

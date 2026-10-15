@@ -24,7 +24,7 @@
         .equ    MD_CMD_COPY_FROM_CART, 24
         .equ    MD_CMD_COPY_WORDS, 25
         .equ    MD_CMD_SAFE_CART_XFER, 26
-        .equ    MD_CMD_END, 37              /* KOBO K19: + set_vdp_reg (34); D32X M1: + start_d32xr (35); REV2: + set_vsram (36) */
+        .equ    MD_CMD_END, 38              /* KOBO K19: + set_vdp_reg (34); D32X M1: + start_d32xr (35); REV2: + set_vsram (36); REV4: + copy_vram_col (37) */
 
 
         .text
@@ -286,6 +286,7 @@ cmd_table:
         .word   set_vdp_reg - cmd_table         /* 34  KOBO K19 */
         .word   start_d32xr - cmd_table         /* 35  D32X M1 */
         .word   set_vsram - cmd_table           /* 36  SuperTux REV2 */
+        .word   copy_vram_col - cmd_table       /* 37  SuperTux REV4 */
 
 | SuperTux REV2: void set_vsram(int addr, int word);
 | One word into the VDP's vertical scroll RAM (VSRAM) at byte address addr (0 = plane A,
@@ -304,6 +305,31 @@ set_vsram:
         move.l  d1,4(a1)
         move.l  8(sp),d0
         move.w  d0,(a1)
+        moveq   #0,d0
+        rts
+
+| SuperTux REV4: void copy_vram_col(int addr, short *src, int words);
+| copy_vram with the VDP's auto-increment at 128 bytes instead of 2: the words go DOWN one
+| column of a 64-cell-wide plane map (one map row is 64 words).  WHY: a plane map is stored row
+| by row, so a new column scrolling in is 28-30 words 128 bytes apart - with copy_vram that would
+| be one command a word.  The increment is put back to 2 afterwards (every other routine sets it
+| itself too).  Runs in the command loop, never inside an interrupt.
+copy_vram_col:
+        lea     0xC00000,a1
+        move.w  #0x8F80,4(a1)
+        move.l  4(sp),d1
+        lsl.l   #2,d1
+        lsr.w   #2,d1
+        swap    d1
+        ori.l   #0x40000000,d1
+        move.l  d1,4(a1)
+        movea.l 8(sp),a0
+        move.l  12(sp),d0
+        subq.w  #1,d0
+0:
+        move.w  (a0)+,(a1)
+        dbra    d0,0b
+        move.w  #0x8F02,4(a1)
         moveq   #0,d0
         rts
 

@@ -104,11 +104,16 @@ int step_clock(void)
  * scroll registers at the level's background speed (SuperTux's bkgd_speed): no drawing at all.
  * Each frame that draws the level asks for it (gen_frame); every frame shown decides
  * (gen_present, from present_view): the first level frame uploads the picture (GENBG.BIN:
- * palettes, tiles, plane map - SH2 commands 64 and 63) and switches the Genesis display on with
- * plane A pointed at the empty map at VRAM 0xB000 (the green / white boot text stays at 0xC000,
- * hidden); the first frame of anything else switches it off and plane A back. The picture is
- * 0.8 x the 32X's size (tools/stx_genesis.py), so it moves 0.8 x as many pixels. */
+ * palettes, tiles, plane map - SH2 commands 64 and 63) and switches the Genesis display on; the
+ * first frame of anything else switches it off. The picture is 0.8 x the 32X's size
+ * (tools/stx_genesis.py), so it moves 0.8 x as many pixels.
+ * VRAM as REV4 (game/gen_level.c, tools/stx_genesis.py): sprite table 0xD000, H scroll table
+ * 0xD400 (both never written: empty / 0); the picture's map at 0xE000 is plane B AND plane A
+ * (both scrolled alike: plane A over plane B shows the same picture) - the green / white boot
+ * text stays on 0xC000, hidden (REV3's first version pointed plane A at 0xB000 instead: REV4's
+ * tiles live there now). Leaving: display off, md_init_hw's planes, sprites, scroll table. */
 static int gen_want, gen_on;
+static int gl_in_loop;                 /* REV4: the game loop draws this frame (game/gen_level.c) */
 static unsigned gen_up_serial = 0xFFFFFFFFu;
 static uint16_t gen_hs = 0xFFFF, gen_vs = 0xFFFF, gen_want_hs, gen_want_vs;
 static void gen_frame(int cx, int cy)
@@ -139,11 +144,22 @@ static void gen_present(void)
 			gen_up_serial = gen_bg_serial;
 			gen_hs = gen_vs = 0xFFFF;
 		}
-		if (gen_want_hs != gen_hs) { gen_vram_word(0xAC02, gen_want_hs); gen_hs = gen_want_hs; }   /* plane B */
-		if (gen_want_vs != gen_vs) { gen_vsram(2, gen_want_vs); gen_vs = gen_want_vs; }
 		if (!gen_on)
 		{
-			gen_vdp_reg(0x822C);       /* plane A -> 0xB000 (never written: empty) */
+			gen_vdp_reg(0x8568);       /* sprite table -> 0xD000 (empty) */
+			gen_vdp_reg(0x8D35);       /* H scroll table -> 0xD400 */
+			gen_vdp_reg(0x8407);       /* plane B -> 0xE000 (the picture) */
+			gen_vdp_reg(0x8238);       /* plane A -> 0xE000 too */
+			gen_hs = gen_vs = 0xFFFF;
+		}
+		if (gen_want_hs != gen_hs)
+		{
+			gen_vram_word(0xD400, gen_want_hs); gen_vram_word(0xD402, gen_want_hs);   /* A, B */
+			gen_hs = gen_want_hs;
+		}
+		if (gen_want_vs != gen_vs) { gen_vsram(0, gen_want_vs); gen_vsram(2, gen_want_vs); gen_vs = gen_want_vs; }
+		if (!gen_on)
+		{
 			gen_vdp_reg(0x8174);       /* Genesis display on (V interrupt stays on) */
 			gen_on = 1;
 		}
@@ -151,7 +167,10 @@ static void gen_present(void)
 	else if (gen_on)
 	{
 		gen_vdp_reg(0x8134);           /* display off, as the game had it */
-		gen_vdp_reg(0x8230);           /* plane A back to 0xC000 (md_init_hw's) */
+		gen_vdp_reg(0x8230);           /* md_init_hw's plane A 0xC000, plane B 0xE000, sprites 0xA800, */
+		gen_vdp_reg(0x8407);           /* H scroll 0xAC00 */
+		gen_vdp_reg(0x8554);
+		gen_vdp_reg(0x8D2B);
 		gen_on = 0;
 	}
 	gen_want = 0;
@@ -160,6 +179,7 @@ static void gen_present(void)
 void present_view(void)
 {
 	gen_present();
+	gl_present();                      /* REV4 */
 	plat_present_scroll(palette, yt_scroll_y(), yt_scroll_x(), YT_VIEW_H);
 }
 
@@ -814,6 +834,31 @@ static void clouds_draw(int cx, int cy)
 static uint32_t stat_cells;            /* the cells the tiler drew this frame (N) */
 
 static void draw_world_now(void);
+static void particles_draw(int layer);
+static void overlay_cells(int first, int cx, int cy);
+/* REV4, OPTIONS - DRAW GENESIS: the level is on the Genesis' planes (game/gen_level.c); the 32X
+ * draws only what moves - in SuperTux's order: the far snow / clouds with the level's tiles drawn
+ * again over them where a tile is (they are behind the tiles), then the bad guys, Tux and the
+ * foreground tiles over them, then the near snow and the floating scores. Every rectangle drawn
+ * is cleared again (to the see-through colour) when this buffer is drawn next (gl_collect). */
+static void gl_world(int cx, int cy, int in_loop)
+{
+	gl_begin(cx, cy, in_loop);
+	yt_rect_log(1);
+	particles_draw(0);
+	gl_collect(cx, cy);
+	overlay_cells(1, cx, cy);
+	yt_rect_log(1);
+	objects_draw_back(cx, cy, game_ms);
+	tux_draw(cx, cy, game_ms, global_frame);
+	gl_collect(cx, cy);
+	overlay_cells(3, cx, cy);          /* foreground-tm: over Tux */
+	yt_rect_log(1);
+	particles_draw(1);
+	objects_draw_front(cx, cy);
+	gl_collect(cx, cy);
+	yt_rect_log(0);
+}
 
 /* R5: the camera, Tux and the particles moved to where they were interp_a / 256 of the way
  * from the last step's start to now, for the drawing only (the objects do it in objects.c) */
@@ -855,6 +900,7 @@ static void draw_world_now(void)
 	view_cx = cx; view_cy = cy;
 	frame_cells = 0;
 	level_animate(game_ms);
+	if (gl_level) { gl_world(cx, cy, gl_in_loop); gl_in_loop = 0; t1 = plat_prof_us(); TADD(T_SPR, t1 - t0); return; }   /* REV4 */
 	gen_frame(cx, cy);                 /* REV3: the Genesis picture (no-op unless the level has it) */
 	const int parallax = opt_parallax == 1 && back_px && lbkgd_speed != 100;
 	if (parallax != drew_parallax)
@@ -1008,9 +1054,13 @@ static void bg_intro(void)
 	if (cy > lh * YT_TILE - YT_VIEW_H) cy = lh * YT_TILE - YT_VIEW_H;
 	if (cx < 0) cx = 0;
 	if (cy < 0) cy = 0;
-	yt_begin(cx, cy);
-	yt_layers(0, 0);
-	gen_frame(cx, cy);                 /* REV3 */
+	if (gl_level) gl_begin(cx, cy, 0); /* REV4: the level on the Genesis, nothing moving yet */
+	else
+	{
+		yt_begin(cx, cy);
+		yt_layers(0, 0);
+		gen_frame(cx, cy);             /* REV3 */
+	}
 	intro_words(session_level, 0);
 }
 
@@ -1157,6 +1207,8 @@ int game_play(int li)
 		t1 = plat_prof_us(); TADD(T_LOGIC, t1 - t0); t0 = t1;
 		plat_wait_flip();
 		t1 = plat_prof_us(); TADD(T_WAIT, t1 - t0);
+		if (gl_level) { gl_after_flip(game_ms); t1 = plat_prof_us(); TADD(T_HUD, t1 - t0); }   /* REV4: the Genesis follows the frame now shown */
+		gl_in_loop = 1;
 		game_draw_world();
 #ifndef OJ32X_MARS
 		if (getenv("ST_TUXY")) fprintf(stderr, "TY %d %d\n", FX_INT(tux.y), FX_INT(tux.x));   /* PC: Tux's place a frame */

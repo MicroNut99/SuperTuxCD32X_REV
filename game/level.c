@@ -134,9 +134,11 @@ static int homes_overlap(int i, int j)
 static int back_home(int li)
 {
 	if (!homes_read) read_homes();
-	if (!opt_parallax || li < 0 || li >= NLEVELS || !homes[li].back) return -1;
-	if (opt_parallax == 1 && !(homes[li].back & 0x80)) return -1;   /* MOVES: only a moving one */
-	if (opt_parallax == 2 && li == DEMO_LEVEL) return -1;   /* REV3: the title never reads the disc */
+	if (li < 0 || li >= NLEVELS || !homes[li].back) return -1;
+	/* who needs the picture's pack: MOVES (only a moving picture), REV3's BACKGROUND GENESIS and
+	 * REV4's DRAW GENESIS (any picture) - never the title's demo (it never reads the disc) */
+	const int genesis = opt_parallax == 2 || opt_dma == 2;
+	if (genesis ? li == DEMO_LEVEL : !(opt_parallax == 1 && (homes[li].back & 0x80))) return -1;
 	const int b = NLEVELS + (homes[li].back & 0x7F) - 1;
 	if (b >= n_homes || homes_overlap(li, b)) return -1;
 	return b;
@@ -190,6 +192,7 @@ void level_reset_map(void)
 		ia_ids[i] = be16(L_t2 + 2 * i);
 	}
 	yt_invalidate();
+	gl_map_reset();                    /* REV4: the Genesis map columns are read again */
 }
 
 /* the moving background (R4): its picture in the cart, 0 when the level does not move one */
@@ -199,6 +202,10 @@ int back_w, back_h, back_stride;
  * (GENBG.BIN, tools/stx_genesis.py) and its own pictures see-through where the picture shows
  * (LEVELG.BIN / COMPG.BIN, tools/stx_pack.py); 0 = drawn as before */
 const uint8_t *gen_bg;
+/* REV4, OPTIONS - DRAW GENESIS: the level read as Genesis tiles and map columns (GENLVL.BIN,
+ * tools/stx_genesis.py genesis_level) and its picture with one palette (GENBG1.BIN; 0 for a
+ * gradient level - its plane B is in GENLVL.BIN); 0 = drawn by the 32X (game/gen_level.c) */
+const uint8_t *gl_level, *gl_bg1;
 unsigned gen_bg_serial;                /* + 1 each level read (the picture is uploaded again) */
 
 void load_level(int li)
@@ -208,9 +215,22 @@ void load_level(int li)
 	if (bg >= 0 && !home_cached(bg)) fetch(bg);     /* never overlaps the level (back_home) */
 	back_px = 0;
 	gen_bg = 0;
+	gl_level = gl_bg1 = 0;
 	gen_bg_serial++;
 	const uint8_t *base = pack_base(li);
-	if (bg >= 0 && opt_parallax == 2)
+	if (opt_dma == 2 && li != DEMO_LEVEL)
+	{
+		/* REV4: the whole level on the Genesis - its GENLVL.BIN, and for a picture its GENBG1.BIN
+		 * (a gradient's plane B is in GENLVL.BIN); without them it is drawn by the 32X */
+		const uint8_t *g = pk_file(base, "GENLVL.BIN", 0);
+		if (g && !memcmp(g, "STGL", 4) && pk_file(base, "LEVELG.BIN", 0))
+		{
+			if (be16(g + 18)) gl_level = g;
+			else if (bg >= 0 && (gl_bg1 = pk_file(pack_base(bg), "GENBG1.BIN", 0)) != 0) gl_level = g;
+		}
+	}
+	if (gl_level) { }
+	else if (bg >= 0 && opt_parallax == 2)
 	{
 		/* REV3: the Genesis picture and the see-through version of the level, both or neither */
 		const uint8_t *g = pk_file(pack_base(bg), "GENBG.BIN", 0);
@@ -228,8 +248,9 @@ void load_level(int li)
 	}
 	level_n = li;
 	uint32_t csize;
-	level_bin = pk_file(base, gen_bg ? "LEVELG.BIN" : "LEVEL.BIN", 0);
-	const uint8_t *comp = pk_file(base, gen_bg ? "COMPG.BIN" : "COMP.BIN", &csize);
+	const int see_through = gen_bg || gl_level;
+	level_bin = pk_file(base, see_through ? "LEVELG.BIN" : "LEVEL.BIN", 0);
+	const uint8_t *comp = pk_file(base, see_through ? "COMPG.BIN" : "COMP.BIN", &csize);
 	if (!level_bin || !comp || memcmp(level_bin, "STX3", 4)) plat_fatal("LEVEL.BIN: NOT STX3");
 	comp_px = comp + 128;
 	lw = be16(level_bin + 4); lh = be16(level_bin + 6);
@@ -388,11 +409,15 @@ void level_change(int x, int y, int tile)
 	if (tile >= ntiles) tile = 0;
 	ia_ids[c] = (uint16_t)tile;
 	const int v = variant(c, tile);
-	if (v >= 0) pic_layer[c] = (uint16_t)v;   /* the tiler sees the number change and redraws the cell */
+	if (v >= 0) { pic_layer[c] = (uint16_t)v; gl_cell_changed(c); }   /* the tiler sees the number change and redraws the cell; REV4: the Genesis map too */
 #ifndef OJ32X_MARS
 	else fprintf(stderr, "LEVEL %d: no picture for cell %d with tile %d\n", level_n, c, tile);
 #endif
 }
+
+/* REV4 (game/gen_level.c): a cell's picture number now and as the level was read */
+unsigned level_pic(int c) { return pic_layer[c]; }
+unsigned level_pic_orig(int c) { return be16(L_pic + 2 * c); }
 
 int level_hidden(int tx, int ty)
 {
@@ -410,7 +435,7 @@ void level_hide(int tx, int ty, int hide)
 		for (int i = 0; i < n_hidden; i++)
 			if (hidden_cells[i] == c) { hidden_cells[i] = hidden_cells[--n_hidden]; break; }
 	const int v = variant(c, hide ? 0 : ia_ids[c]);
-	if (v >= 0) pic_layer[c] = (uint16_t)v;
+	if (v >= 0) { pic_layer[c] = (uint16_t)v; gl_cell_changed(c); }
 }
 
 /* ------------------------------------------------------------------ the sweep */

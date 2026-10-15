@@ -112,6 +112,10 @@ void yt_invalidate(void);
  * whole 320 x 176 picture into it (32-bit writes), yt_sprite then draws letters and the logo.
  * The tile map is invalidated, so a level drawn afterwards starts with a full redraw. */
 void yt_screen(void);
+/* REV4: the canvas as a fixed sprite layer (game/gen_level.c); a view rectangle filled */
+void yt_fixed(void);
+void yt_fill(int x, int y, int w, int h, uint8_t colour);
+void yt_fill_row(uint8_t *dst, int n, uint8_t colour);  /* platform part: game/yt_mars.c, yt_host.c */
 void yt_picture(const uint8_t *pixels);       /* platform part: game/yt_mars.c, game/yt_host.c */
 
 /* R4, OPTIONS - BACKGROUND MOVES: the view filled from a repeating picture (pw x ph, rows of
@@ -139,6 +143,7 @@ int  gen_cart_to_vram(unsigned vram, const void *src, unsigned words);   /* 63 (
 int  gen_cart_to_cram(int first, const void *src, int count);      /* 64 */
 void gen_vdp_reg(unsigned word);                                   /* 65: 0x8000 | reg << 8 | value */
 void gen_vsram(unsigned addr, unsigned word);                      /* 66 */
+int  gen_cart_to_vram_cols(unsigned vram, const void *src, unsigned rows, unsigned cols);   /* 67 (REV4) */
 
 /* REV: what the last yt_begin did to the canvas sideways / up-down (OPTIONS - TIMING WORST):
  * 0 nothing, 1 moved it (*us: the move's microseconds), 2 left it in place (the cells that

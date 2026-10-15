@@ -210,13 +210,36 @@ void plat_present_scroll(const uint16_t *palette555, int row0, int xoff, int vie
 		fb[2 * line + 1] = (uint8_t)(byte >> 1);
 	}
 	memset(fb + 0x16000, border, 320);
-	memcpy(shown_pal, palette555, sizeof shown_pal);
+	/* REV4: a frame is saved when the NEXT one is handed over - on the console the 32X shows it
+	 * from the vertical blank on, and the game sets the Genesis' scroll for it right after that
+	 * blank (game/gen_level.c gl_after_flip): the Genesis state at the next hand-over is what was
+	 * on screen with it */
+	static uint8_t pend_fb[0x20000];
+	static uint16_t pend_pal[256];
+	static int pend_shift, pend_have;
+	static uint32_t pend_frame;
 	const unsigned every = (unsigned)atoi(env("ST_SAVE_EVERY", "10"));
-	if (every && frame % every == 0) save_frame(fb, xoff & 1);
+	if (pend_have)
+	{
+		memcpy(shown_pal, pend_pal, sizeof shown_pal);
+		const uint32_t keep = frame;
+		frame = pend_frame;
+		save_frame(pend_fb, pend_shift);
+		frame = keep;
+		pend_have = 0;
+	}
+	if (every && frame % every == 0)
+	{
+		memcpy(pend_fb, fb, sizeof pend_fb);
+		memcpy(pend_pal, palette555, sizeof pend_pal);
+		pend_shift = xoff & 1;
+		pend_frame = frame;
+		pend_have = 1;
+	}
 	frame++;
 	ticks += (uint32_t)atoi(env("ST_MS", "50"));
 	back ^= 1;
-	if (frame >= (uint32_t)atoi(env("ST_FRAMES", "300"))) exit(0);
+	if (frame >= (uint32_t)atoi(env("ST_FRAMES", "300")) + 1) exit(0);
 }
 
 void plat_parallel(void (*fn)(void *, int), void *arg) { fn(arg, 0); fn(arg, 1); }

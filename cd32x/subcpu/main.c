@@ -88,6 +88,7 @@ extern int do_md_cmd3(int cmd, int arg1, int arg2, int arg3);
 #define MD_CMD_COPY_VRAM       7         /* hw_md.s copy_vram(addr, src, words) */
 #define MD_CMD_SET_PALETTE    12         /* hw_md.s set_palette(src, index, count) */
 #define MD_CMD_SET_VSRAM      36         /* SuperTux REV2: hw_md.s set_vsram(addr, word) */
+#define MD_CMD_COPY_VRAM_COL  37         /* SuperTux REV4: hw_md.s copy_vram_col(addr, src, words) */
 /* KOBO K19: hw_md.s set_vdp_reg - one VDP register word */
 
 /* KOBO K19 - GREEN DIAGNOSTIC TEXT.  1 = printed as before (C on the pad shows/hides it).
@@ -1004,6 +1005,27 @@ int main(void)
                 n -= k;
                 coff += (uint32_t)k * 2;
                 dst += cmd == 63 ? k * 2 : k;
+            }
+            do_md_cmd2(MD_CMD_WRITE_32X_16, 0xA1512C, ok);
+            do_md_cmd2(MD_CMD_WRITE_32X_16, 0xA15120, 0);
+        }
+        /* SuperTux REV4 - 67  cart -> VRAM in COLUMNS (a plane map 64 cells wide, one map row =
+           128 bytes): COMM2 = VRAM byte address of the first column's top word, COMM8L =
+           (columns - 1) << 30 | words a column << 22 | cart offset (even; 1-4 columns of 1-255
+           words, stored one column after the other).  Column k goes to address + 2 k.  Reply
+           COMM12 = 1 ok / 0 refused.  WHY: a plane scrolling sideways needs a new map column
+           every 8 pixels - 30 words 128 bytes apart (cmd 63 copies rows). */
+        else if (cmd == 67) {
+            int dst = do_md_cmd1(MD_CMD_READ_32X_16, 0xA15122) & 0xFFFF;
+            uint32_t p = (uint32_t)do_md_cmd1(MD_CMD_READ_32X_32, 0xA15128);
+            uint32_t coff = p & 0x3FFFFF;
+            int rows = (int)((p >> 22) & 0xFF), cols = (int)(p >> 30) + 1, k;
+            int ok = rows > 0 && !(coff & 1) && !(dst & 1)
+                     && ((coff & 0xFFFFF) + (uint32_t)(rows * cols * 2) <= 0x100000);   /* one bank */
+            if (ok) {
+                do_md_cmd2(MD_CMD_WRITE_32X_16, 0xA15104, (int)(coff >> 20) & 3);
+                for (k = 0; k < cols; k++)
+                    do_md_cmd3(MD_CMD_COPY_VRAM_COL, dst + 2 * k, 0x900000 + (coff & 0xFFFFF) + (uint32_t)(k * rows * 2), rows);
             }
             do_md_cmd2(MD_CMD_WRITE_32X_16, 0xA1512C, ok);
             do_md_cmd2(MD_CMD_WRITE_32X_16, 0xA15120, 0);

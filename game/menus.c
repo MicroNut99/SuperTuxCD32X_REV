@@ -19,7 +19,7 @@
  * 58 writes a word of that buffer, 59 saves it). Hurrican keeps its table at byte 3968; SuperTux
  * R2 uses bytes 3072-3439 ("STX2"; R1's 128 bytes at 3840 are no longer read):
  *   0 "STX2"  4 music, timing (byte 5: bit 0 on, 1 moves, 2 steps, 3 classic; REV1: 4 worst,
- *             5 draw DMA; REV3: 6 background genesis), A/B swap, lives  8 ten high scores {name[3], score u32, level u8}
+ *             5 draw DMA; REV3: 6 background genesis; REV4: 7 draw genesis), A/B swap, lives  8 ten high scores {name[3], score u32, level u8}
  *   88 seven slots of 40 bytes {used, map, tile x, tile y, lives, bonus, score u32, coins u16,
  *      solved levels 3 x 8 bytes (a bit a level of each world map), pad 4}
  * On the PC: ST_DIR/STXSAVE.BIN.
@@ -50,7 +50,7 @@ static void save_unpack(const uint8_t *b)
 {
 	memset(slots, 0, sizeof slots);
 	if (memcmp(b, "STX2", 4)) { hs_defaults(); return; }
-	opt_music = b[4] & 1; opt_timing = (b[5] & 1) ? 1 + ((b[5] >> 4) & 1) : 0; opt_dma = (b[5] >> 5) & 1; yt_set_dma(opt_dma); opt_parallax = (b[5] >> 6) & 1 ? 2 : (b[5] >> 1) & 1; opt_smooth = !((b[5] >> 2) & 1); opt_ring = !((b[5] >> 3) & 1); yt_set_ring(opt_ring); opt_swap = b[6] & 1;
+	opt_music = b[4] & 1; opt_timing = (b[5] & 1) ? 1 + ((b[5] >> 4) & 1) : 0; opt_dma = (b[5] >> 7) & 1 ? 2 : (b[5] >> 5) & 1; yt_set_dma(opt_dma == 1); opt_parallax = (b[5] >> 6) & 1 ? 2 : (b[5] >> 1) & 1; opt_smooth = !((b[5] >> 2) & 1); opt_ring = !((b[5] >> 3) & 1); yt_set_ring(opt_ring); opt_swap = b[6] & 1;
 	opt_lives = b[7] >= 1 && b[7] <= 9 ? b[7] : START_LIVES;
 	for (int i = 0; i < HS_N; i++)
 	{
@@ -75,7 +75,7 @@ static void save_pack(uint8_t *b)
 {
 	memset(b, 0, SAVE_BYTES);
 	memcpy(b, "STX2", 4);
-	b[4] = (uint8_t)opt_music; b[5] = (uint8_t)((opt_timing != 0) | (opt_parallax == 1) << 1 | (opt_parallax == 2) << 6 | (!opt_smooth) << 2 | (!opt_ring) << 3 | (opt_timing == 2) << 4 | opt_dma << 5);   /* REV: bits 4 WORST, 5 DMA */ b[6] = (uint8_t)opt_swap; b[7] = (uint8_t)opt_lives;
+	b[4] = (uint8_t)opt_music; b[5] = (uint8_t)((opt_timing != 0) | (opt_parallax == 1) << 1 | (opt_parallax == 2) << 6 | (!opt_smooth) << 2 | (!opt_ring) << 3 | (opt_timing == 2) << 4 | (opt_dma == 1) << 5 | (opt_dma == 2) << 7);   /* REV: bits 4 WORST, 5 DMA */ b[6] = (uint8_t)opt_swap; b[7] = (uint8_t)opt_lives;
 	for (int i = 0; i < HS_N; i++)
 	{
 		uint8_t *r = b + 8 + 8 * i;
@@ -455,7 +455,8 @@ void options_page(BgFn bg)
 		/* R10: the canvas wrapping up / down (no re-anchor when the view goes up or down) */
 		put_str(rows[O_SCROLL], opt_ring ? "SCROLL <RING>" : "SCROLL <CLASSIC>");
 		/* REV: rows of new cells copied by the master's DMA unit (game/yt_layers.c) */
-		put_str(rows[O_DRAW], opt_dma ? "DRAW   <DMA>" : "DRAW   <CPU>");
+		/* REV4: GENESIS - the level on the Genesis' planes, the 32X draws only what moves */
+		put_str(rows[O_DRAW], opt_dma == 2 ? "DRAW <GENESIS>" : opt_dma ? "DRAW   <DMA>" : "DRAW   <CPU>");
 		put_str(rows[O_LEVELS], "LEVEL SELECT");
 		put_str(rows[O_CONTROLS], "CONTROLS");
 		put_str(rows[O_STORY], "STORY");
@@ -487,7 +488,7 @@ void options_page(BgFn bg)
 		case O_MUSIC: opt_music ^= 1; music_again(); break;
 		case O_LIVES: opt_lives = (opt_lives - 1 + d + 9) % 9 + 1; break;
 		case O_TIMING: opt_timing = (opt_timing + (d > 0 ? 1 : 2)) % 3; break;
-		case O_DRAW: opt_dma ^= 1; yt_set_dma(opt_dma); break;
+		case O_DRAW: opt_dma = (opt_dma + (d > 0 ? 1 : 2)) % 3; yt_set_dma(opt_dma == 1); break;   /* GENESIS: from the next level read on */
 		case O_BUTTONS: opt_swap ^= 1; break;
 		case O_BACKGROUND: opt_parallax = (opt_parallax + (d > 0 ? 1 : 2)) % 3; break;   /* from the next level read on */
 		case O_MOTION: opt_smooth ^= 1; break;
@@ -654,6 +655,7 @@ int main(int argc, char *argv[])
 	 * timing line */
 	if (getenv("ST_TIMING")) opt_timing = atoi(getenv("ST_TIMING")) == 2 ? 2 : 1;
 	if (getenv("ST_DMA")) { opt_dma = 1; yt_set_dma(1); }   /* REV PC checks: DRAW <DMA> */
+	if (getenv("ST_GLEVEL")) { opt_dma = 2; yt_set_dma(0); }   /* REV4 PC checks: DRAW <GENESIS> */
 	if (getenv("ST_PARALLAX")) opt_parallax = 1;
 	if (getenv("ST_GENESIS")) opt_parallax = 2;   /* REV3 PC checks: BACKGROUND GENESIS */
 	if (getenv("ST_CLASSIC")) { opt_ring = 0; yt_set_ring(0); }   /* R10 PC checks: SCROLL CLASSIC */

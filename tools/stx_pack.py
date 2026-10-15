@@ -317,16 +317,24 @@ def main():
 
     nlevels = len([l for l in open(os.path.join(data, "LEVELS.TXT")) if l.strip()])
     packs, stats = [], []
-    gen_extra = 0
+    gen_extra = gl_extra = 0
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import stx_genesis
+    global_pal = rd("PALETTE.BIN")
     for li in range(nlevels):
         lvb = rd("L%03d.BIN" % li)
         lb, cb, s = build_level(lvb, tdesc, frames, back)
         files = [("LEVEL.BIN", lb), ("COMP.BIN", cb)]
-        if struct.unpack(">H", lvb[8:10])[0] != 0xFFFF:
-            # REV3: the same level for OPTIONS - BACKGROUND GENESIS (the picture on the Genesis)
-            lg, cg, _ = build_level(lvb, tdesc, frames, back, genesis=True)
-            files += [("LEVELG.BIN", lg), ("COMPG.BIN", cg)]
-            gen_extra += len(lg) + len(cg)
+        # REV3: the same level see-through where the background shows, for OPTIONS - BACKGROUND
+        # GENESIS (a picture on the Genesis) and REV4's DRAW GENESIS (all levels)
+        lg, cg, _ = build_level(lvb, tdesc, frames, back, genesis=True)
+        files += [("LEVELG.BIN", lg), ("COMPG.BIN", cg)]
+        gen_extra += len(lg) + len(cg)
+        # REV4: the level as Genesis tiles and map columns (tools/stx_genesis.py genesis_level)
+        bgi, top, bot = struct.unpack(">HHH", lvb[8:14])
+        gl, _ = stx_genesis.genesis_level(lg, cg, global_pal, grad=(top, bot) if bgi == 0xFFFF else None)
+        files.append(("GENLVL.BIN", gl))
+        gl_extra += len(gl)
         packs.append(make_pack(files))
         stats.append(s)
     total = sum(len(p) for p in packs)
@@ -334,7 +342,8 @@ def main():
           "%d stacks with two animation speeds)" % (nlevels, total, sum(s["blocks"] for s in stats),
                                                   sum(s["anims"] for s in stats), sum(s["var"] for s in stats),
                                                   sum(s["multi"] for s in stats)))
-    print("  REV3: the levels' Genesis-background versions (LEVELG.BIN + COMPG.BIN): %d bytes" % gen_extra)
+    print("  REV3: the levels' see-through versions (LEVELG.BIN + COMPG.BIN): %d bytes" % gen_extra)
+    print("  REV4: the levels as Genesis tiles and columns (GENLVL.BIN): %d bytes" % gl_extra)
 
     # ---- homes: the demo in IMAGE8; area A from the end of IMAGE8 (world 1 from its first
     # level, as far as it goes); area B a ring for the rest, in play order
@@ -345,14 +354,14 @@ def main():
     # read only when the option is on and a level needs one - into the area B ring, like the levels (OJ1nn.PAK, nn = picture).
     nback = len(back)
     back_packs = []
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    import stx_genesis
     for px, cols, bw, bh in back:
         rows = b"".join(px[y * bw:(y + 1) * bw] + px[y * bw:y * bw + TILE] for y in range(bh))
         # REV3: GENBG.BIN - the same picture for the Genesis' plane B (tools/stx_genesis.py)
         genbg = stx_genesis.genesis_background(px, cols, bw, bh)
+        # REV4: GENBG1.BIN - with one palette (3) and at most 448 tiles, beside the level's
         back_packs.append(make_pack([("BACK.BIN", struct.pack(">HHHH", bw, bh, bw + TILE, 0) + rows),
-                                     ("GENBG.BIN", genbg)]))
+                                     ("GENBG.BIN", genbg),
+                                     ("GENBG1.BIN", stx_genesis.genesis_background1(px, cols, bw, bh))]))
     demo_bgi = 0xFFFF                  # (none resident: area A keeps room for world 1's levels)
     resident = [(n, rd(n)) for n in res_files] + [("DEMO.PAK", packs[DEMO_LEVEL])]
     homes = [None] * (nlevels + nback)

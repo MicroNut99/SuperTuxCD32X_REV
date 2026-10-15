@@ -43,6 +43,18 @@ void yt_copy_row(uint8_t *d, const uint8_t *s, int n)
 	for (; n > 0; n--) *d++ = *s++;
 }
 
+/* REV4: a row of the canvas in one colour (16- / 32-bit writes where the address allows) */
+void yt_fill_row(uint8_t *d, int n, uint8_t c)
+{
+	if (n <= 0) return;
+	const uint32_t w4 = c * 0x01010101u;
+	if ((uintptr_t)d & 1) { *d++ = c; n--; }
+	if (((uintptr_t)d & 2) && n >= 2) { *(volatile uint16_t *)d = (uint16_t)w4; d += 2; n -= 2; }
+	for (; n >= 4; n -= 4, d += 4) *(volatile uint32_t *)d = w4;
+	for (; n >= 2; n -= 2, d += 2) *(volatile uint16_t *)d = (uint16_t)w4;
+	if (n) *d = c;
+}
+
 /* inside the canvas (R4: re-anchoring), both 4-aligned: 32-bit words, in the safe direction */
 void yt_move_row(uint8_t *d, const uint8_t *s, int n)
 {
@@ -233,6 +245,26 @@ int gen_cart_to_cram(int first, const void *src, int count)
 	return c_cmd(64) && C_COMM12 == 1;
 }
 void gen_vdp_reg(unsigned word) { C_COMM2 = (uint16_t)word; c_cmd(65); }
+/* REV4: command 67 - cols (1-4) columns of rows words each, stored one after the other in the
+ * cart, down a 64-cell-wide plane map from vram (column k at vram + 2 k). The Sub-CPU reads them
+ * through ONE 1 MB bank of the cart window: data crossing a bank goes word by word (62). */
+int gen_cart_to_vram_cols(unsigned vram, const void *src, unsigned rows, unsigned cols)
+{
+	const uint32_t off = cart_off(src);
+	if (off == 0xFFFFFFFFu || (off & 1) || (vram & 1) || !rows || rows > 255 || !cols || cols > 4) return 0;
+	if ((off & 0xFFFFF) + rows * cols * 2 > 0x100000)
+	{
+		const uint8_t *p = (const uint8_t *)src;
+		for (unsigned k = 0; k < cols; k++)
+			for (unsigned r = 0; r < rows; r++, p += 2)
+				gen_vram_word(vram + 2 * k + 128 * r, (unsigned)p[0] << 8 | p[1]);
+		return 1;
+	}
+	C_COMM2 = (uint16_t)vram;
+	C_COMM8L = (uint32_t)(cols - 1) << 30 | (uint32_t)rows << 22 | off;
+	C_COMM12 = 0;
+	return c_cmd(67) && C_COMM12 == 1;
+}
 void gen_vsram(unsigned addr, unsigned word)
 {
 	C_COMM2 = (uint16_t)addr;

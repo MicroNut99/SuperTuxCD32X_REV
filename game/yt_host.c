@@ -214,27 +214,45 @@ void gen_vdp_reg(unsigned word)
 	if ((word & 0xE000) == 0x8000 && r < 24) g_reg[r] = (uint8_t)word;
 }
 void gen_vsram(unsigned addr, unsigned word) { g_vsram[(addr & 0x7E) / 2 % 40] = (uint16_t)word; }
-
-/* plane B at screen pixel (x, line), line 0-223; 0 = see-through (colour 0) or display off */
-int host_genesis_pixel(int x, int line, uint8_t rgb[3])
+int gen_cart_to_vram_cols(unsigned vram, const void *src, unsigned rows, unsigned cols)
 {
-	if (!(g_reg[1] & 0x40)) return 0;
+	if (!rows || rows > 255 || !cols || cols > 4 || (vram & 1)) return 0;
+	const uint8_t *p = g_cart(src, rows * cols * 2);
+	for (unsigned k = 0; k < cols; k++)
+		for (unsigned r = 0; r < rows; r++, p += 2)
+			gen_vram_word((vram + 2 * k + 128 * r) & 0xFFFF, (unsigned)p[0] << 8 | p[1]);
+	return 1;
+}
+
+/* a plane (0 A, 1 B) at screen pixel (x, line): its colour index (0 = see-through) */
+static unsigned plane_pixel(int plane, int x, int line, unsigned *pal)
+{
 	const unsigned pw = (g_reg[16] & 3) == 1 ? 64 : (g_reg[16] & 3) == 3 ? 128 : 32;
 	const unsigned ph = ((g_reg[16] >> 4) & 3) == 1 ? 64 : ((g_reg[16] >> 4) & 3) == 3 ? 128 : 32;
-	const unsigned hs_at = (unsigned)(g_reg[13] & 0x3F) << 10;
-	const unsigned hs = ((unsigned)g_vram[hs_at + 2] << 8 | g_vram[hs_at + 3]) & 0x3FF;   /* plane B */
-	const unsigned vs = g_vsram[1] & 0x3FF;
+	const unsigned hs_at = ((unsigned)(g_reg[13] & 0x3F) << 10) + 2 * (unsigned)plane;
+	const unsigned hs = ((unsigned)g_vram[hs_at] << 8 | g_vram[hs_at + 1]) & 0x3FF;
+	const unsigned vs = g_vsram[plane] & 0x3FF;
 	const unsigned px = ((unsigned)x - hs) & (pw * 8 - 1), py = ((unsigned)line + vs) & (ph * 8 - 1);
-	const unsigned map = (unsigned)(g_reg[4] & 7) << 13;
+	const unsigned map = plane ? (unsigned)(g_reg[4] & 7) << 13 : (unsigned)(g_reg[2] & 0x38) << 10;
 	const unsigned at = map + 2 * ((py / 8) * pw + px / 8);
 	const unsigned e = (unsigned)g_vram[at] << 8 | g_vram[at + 1];
 	unsigned tx = px & 7, ty = py & 7;
 	if (e & 0x800) tx = 7 - tx;
 	if (e & 0x1000) ty = 7 - ty;
 	const unsigned t = (e & 0x7FF) * 32 + ty * 4 + tx / 2;
-	const unsigned ci = tx & 1 ? g_vram[t] & 15 : g_vram[t] >> 4;
+	*pal = (e >> 13) & 3;
+	return tx & 1 ? g_vram[t] & 15 : g_vram[t] >> 4;
+}
+
+/* what the Genesis shows at screen pixel (x, line), line 0-223: plane A over plane B (REV4: the
+ * level over its background; REV3: plane A an empty map); 0 = see-through or display off */
+int host_genesis_pixel(int x, int line, uint8_t rgb[3])
+{
+	if (!(g_reg[1] & 0x40)) return 0;
+	unsigned pal, ci = plane_pixel(0, x, line, &pal);
+	if (!ci) ci = plane_pixel(1, x, line, &pal);
 	if (!ci) return 0;
-	const unsigned c = g_cram[((e >> 13) & 3) * 16 + ci];
+	const unsigned c = g_cram[pal * 16 + ci];
 	rgb[0] = (uint8_t)(((c >> 1) & 7) * 255 / 7); rgb[1] = (uint8_t)(((c >> 5) & 7) * 255 / 7);
 	rgb[2] = (uint8_t)(((c >> 9) & 7) * 255 / 7);
 	return 1;
@@ -246,6 +264,8 @@ int host_genesis_plane_a_empty(void)
 	for (unsigned i = 0; i < 64 * 32 * 2; i++) if (g_vram[map + i]) return 0;
 	return 1;
 }
+
+void yt_fill_row(uint8_t *d, int n, uint8_t c) { if (n <= 0) return; canvas_check(d, n, "yt_fill_row"); memset(d, c, (size_t)n); }
 
 void yt_picture(const uint8_t *pixels)
 {
