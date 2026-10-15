@@ -19,6 +19,59 @@
 > build on any other byte. Each such change is first tested in Kega Fusion with the green and white
 > boot diagnostics on (Fusion boots CD32X discs up to the splash), then on the console.
 
+## Why the Sonic CD method ("rip and tear") is faster
+
+**Where the time went before.** In R11 the 32X drew everything: every 16 × 16 cell of the level,
+the background, Tux and the bad guys, into a frame buffer, with two SH2s. Scrolling meant drawing
+the new cells coming into view, and every 48-64 pixels moving or redrawing the whole picture (the
+hitch). The SH2s' time went into copying level pixels into the frame buffer - work that is the
+same every frame and has nothing to do with the game.
+
+**What the method does.** The Genesis has a video chip built to show tile maps: two planes of
+8 × 8 tiles, each scrolled by writing a register, drawn by the hardware on every line for free.
+Sonic CD (and every Genesis platformer) uses it that way. REV puts SuperTux's level on those
+planes and leaves the 32X only what really changes each frame:
+
+| | R11 (32X draws all) | REV7 + (Genesis tiles) |
+|---|---|---|
+| level tiles | drawn by the SH2s into the frame buffer | in Genesis video RAM once per level; shown by the Genesis chip |
+| scrolling | redraw new cells; move or redraw the picture every 48-64 px | two scroll registers a frame |
+| new tiles coming into view | drawn cell by cell | one map column (30 words) per 8 pixels scrolled |
+| the 32X's work | the whole 320 × 176 picture | the moving things (Tux, bad guys, coins in flight, snow) and the sky behind them |
+| the hitch | every 48-64 pixels | gone - nothing is ever moved |
+
+The two pictures are combined by the hardware: the 32X sits in front (priority bit), and its
+sky colours carry the "through" bit, so they appear behind the Genesis tiles and show wherever a
+tile is see-through (REV7-REV9).
+
+**Why it works for SuperTux - its tiles line up with the Genesis grid.** The Genesis can only
+show 8 × 8 tiles placed on an 8-pixel grid. SuperTux's tiles are 32 × 32, drawn here at half
+size: **16 × 16 - exactly 2 × 2 Genesis tiles**, always on the grid. So:
+- each level tile becomes 4 Genesis tiles, made once when the disc is built (`tools/stx_genesis.py`);
+- the same tile used 500 times in a level is stored once - a level needs 119-232 Genesis tiles
+  plus its animation frames, well inside video RAM (64 KB);
+- the level's map becomes the Genesis map directly: scrolling is the chip's job, not ours.
+
+**Games whose tiles do not divide into 8 × 8 (or 16 × 16) cells see little advantage, and why.**
+The method only pays when the game's picture is a grid of repeating tiles that falls exactly on
+the Genesis' 8-pixel grid.
+- *Tile sizes that are not a multiple of 8* (12, 20, 30 pixels ...) or tiles placed at any pixel:
+  a tile then lands across Genesis tiles in many different ways, and each way is a different set
+  of 8 × 8 pictures. The number of unique Genesis tiles explodes past what 64 KB of video RAM
+  holds (about 1,500-2,000 tiles), so most of the picture would still have to be drawn by the 32X.
+- *Pictures that are not tiles at all* - large painted backgrounds, scaled or rotated graphics,
+  3D (Doom, Virtua Racing): almost every 8 × 8 piece is unique, so there is nothing to reuse.
+- *Many colours in one tile*: a Genesis tile has 15 colours from one of 4 palettes (512 colours in
+  all, 3 bits a channel). Tiles drawn with hundreds of colours lose detail; the 32X (256 of 32,768)
+  keeps them.
+In those cases the 32X keeps doing the drawing, and the Genesis can only help with flat
+backgrounds or borders.
+
+**What it costs SuperTux.** The level's tiles are in Genesis colours (4 palettes of 15 - REV9),
+slightly coarser than the 32X's; animated tiles (coins, water) are uploaded frame by frame;
+and the background pictures became 32X gradient skies in the pictures' own colours (REV8-REV9).
+In return the levels scroll smoothly with no hitch, and the SH2s are free for the game.
+
 ## REV rounds
 | Round | What was ripped out and what replaced it |
 |---|---|
