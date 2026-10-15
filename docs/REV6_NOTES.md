@@ -19,9 +19,9 @@ be **built** from Genesis tiles, as Sonic CD is. REV6 does that:
 - The title's demo: the Genesis scroll is set after each flip in the menus too
   (`menu_choose`, `message_screen`), and its map is written again when Tux goes back to the start.
 - The timing line ends in `DG` in every level.
-- Fixed (found by the PC check, there since REV4): after Tux died, the level's intro screen
-  could show the Genesis map half from the old camera position (only 6 columns a frame were
-  written at the new one). A restart now writes every column at the new camera.
+- Fixed (found by the PC check): after Tux died, the level's intro screen could show the
+  Genesis map half from the old camera position (only 6 columns a frame were written at the
+  new one). A restart now writes every column at the new camera.
 
 ## Checked on the PC
 - All 77 levels, 900 frames of random play, against the reference that clears the whole 32X
