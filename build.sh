@@ -58,7 +58,7 @@ echo "==> PC check (game/ on the PC: level 1, 300 frames, frames in build/host_f
 [ "${DATA_ONLY:-0}" = 1 ] && { echo "==> DATA_ONLY=1: stopping before the console build"; exit 0; }
 
 echo "==> engine";      rm -rf "$HERE/mars/obj"     # the switches are compiled into port/plat_mars.c
-                        make -C "$HERE/mars" EXTRA_DEFS="-DOJ32X_MUSIC=1 -DOJ32X_DIAG_TEXT=1"   # REV2: diagnostics ON - the text stays until the game has started (docs/STX_HANDOFF.md)
+                        make -C "$HERE/mars" EXTRA_DEFS="-DOJ32X_MUSIC=1"
 [ -f "$HERE/mars/OPENJAZZ.32X" ] || { echo "*** mars/OPENJAZZ.32X was not made - stopping"; exit 1; }
 echo "==> ROM check";   python3 "$HERE/cd32x/ref/openlara/tools/prep_openlara_cd.py" "$HERE/mars/OPENJAZZ.32X" "$ROMS/OPENLARA.32X"
 echo "==> SH2 loader";  cd "$HERE/cd32x/sh2"    && make -f Makefile.cdloader clean && make -f Makefile.cdloader

@@ -12,7 +12,7 @@
    STATE codes) is switched on and drawn IN FRONT of the splash (DISPMODE bit 7, Kobo K18);
    0 = text off, the splash shows alone (OpenLara's release setting, OL-3). */
 #ifndef OJ_DIAG_TEXT
-#define OJ_DIAG_TEXT 1   /* SuperTux CD32X: diagnostics ON (was 0 in Hurrican) */
+#define OJ_DIAG_TEXT 0
 #endif
 
 #ifndef CDL_TARGET_OPENLARA
