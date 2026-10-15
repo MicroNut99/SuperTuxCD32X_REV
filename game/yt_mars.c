@@ -192,6 +192,54 @@ int cart_load(int fid, uint32_t flen, int first, int n, void (*progress)(int don
 	return !bad;
 }
 
+/* ---- REV3: the Genesis picture, SH2 commands 62-66 (cd32x/subcpu/main.c REV2, boot-proven on
+ * the console; docs repo CD32X_COMMAND_LEDGER_ADDITIONS.md). Parameters in COMM2 / COMM8 before
+ * COMM0, done = COMM0 cleared (c_cmd above); cart sources as offsets into the 4 MB cart. */
+#define C_COMM8W (*(volatile uint16_t *)0x20004028)
+static uint32_t cart_off(const void *p)
+{
+	const uint32_t a = (uint32_t)(uintptr_t)p & 0x1FFFFFFFu;    /* 0x02xxxxxx or 0x22xxxxxx */
+	return a >= 0x02000000u && a < 0x02400000u ? a - 0x02000000u : 0xFFFFFFFFu;
+}
+void gen_vram_word(unsigned vram, unsigned word)
+{
+	C_COMM2 = (uint16_t)vram;
+	C_COMM8W = (uint16_t)word;
+	c_cmd(62);
+}
+int gen_cart_to_vram(unsigned vram, const void *src, unsigned words)
+{
+	uint32_t off = cart_off(src);
+	if (off == 0xFFFFFFFFu || (off & 1) || (vram & 1)) return 0;
+	int ok = 1;
+	while (words)
+	{
+		const unsigned k = words > 1023 ? 1023 : words;   /* the command's limit */
+		C_COMM2 = (uint16_t)vram;
+		C_COMM8L = (uint32_t)k << 22 | off;
+		C_COMM12 = 0;
+		if (!c_cmd(63) || C_COMM12 != 1) ok = 0;
+		vram += k * 2; off += k * 2; words -= k;
+	}
+	return ok;
+}
+int gen_cart_to_cram(int first, const void *src, int count)
+{
+	const uint32_t off = cart_off(src);
+	if (off == 0xFFFFFFFFu || (off & 1) || first < 0 || count < 1 || first + count > 64) return 0;
+	C_COMM2 = (uint16_t)first;
+	C_COMM8L = (uint32_t)count << 22 | off;
+	C_COMM12 = 0;
+	return c_cmd(64) && C_COMM12 == 1;
+}
+void gen_vdp_reg(unsigned word) { C_COMM2 = (uint16_t)word; c_cmd(65); }
+void gen_vsram(unsigned addr, unsigned word)
+{
+	C_COMM2 = (uint16_t)addr;
+	C_COMM8W = (uint16_t)word;
+	c_cmd(66);
+}
+
 /* dtiles.c's init_tilemap() and draw_tile_layer() / draw_tilemap() refer to these YATSSD
  * hw_32x.c functions. They are not called in this port (game/yt_layers.c replaces those three
  * functions); if one ever were, the error screen names it instead of the program running on. */

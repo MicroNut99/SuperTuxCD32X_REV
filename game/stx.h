@@ -205,6 +205,8 @@ int  level_hidden(int tx, int ty);              /* a bouncing brick's cell: draw
 /* R4, OPTIONS - BACKGROUND MOVES: the level's background picture (palette 192-255), rows of
  * back_stride bytes; 0 when this level is drawn with the background fixed to it */
 extern const uint8_t *back_px;
+extern const uint8_t *gen_bg;          /* REV3: GENBG.BIN of the level read, 0 = none (game/level.c) */
+extern unsigned gen_bg_serial;
 extern int back_w, back_h, back_stride;    /* 1 background-tm, 2 interactive-tm, 3 foreground-tm */
 extern void (*level_progress)(int done, int total);   /* called after each 32 KB read from the disc */
 /* the platform part (game/yt_mars.c, game/host.c): pieces first .. first + n - 1 of disc file

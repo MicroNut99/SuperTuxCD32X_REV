@@ -171,6 +171,82 @@ void plat_dma_start(void *dst, const void *src, unsigned int bytes)
 static uint32_t dma_lines[2][YT_PITCH / 4];
 uint32_t *yt_dma_line(int i) { return dma_lines[i & 1]; }
 
+/* ---- REV3: a small model of the Genesis video chip for commands 62-66 (game/yt_mars.c on the
+ * 32X): VRAM, CRAM, VSRAM and the registers the 68000 listener's md_init_hw sets
+ * (cd32x/subcpu/hw_md.s InitVDPRegs), written the way the Sub-CPU / 68000 write them, and
+ * host_genesis_pixel() for game/host.c: what plane B shows at a screen pixel (the 32X shows it
+ * where its own pixel's colour has the through bit). Only what the game uses: full-screen
+ * scrolling, plane B, no sprites; plane A only to check it is pointed at an empty map. */
+static uint8_t g_vram[0x10000];
+static uint16_t g_cram[64], g_vsram[40];
+static uint8_t g_reg[24] = { 0x04, 0x14, 0x30, 0x2C, 0x07, 0x54, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                             0x81, 0x2B, 0x00, 0x01, 0x01, 0x00, 0x00 };
+static const uint8_t *g_cart(const void *src, unsigned bytes)
+{
+	extern uint8_t *host_cart(void);
+	const uint8_t *p = (const uint8_t *)src, *c = host_cart();
+	if (p < c || p + bytes > c + 0x400000) { fprintf(stderr, "YT HOST: Genesis source not in the cart\n"); abort(); }
+	if ((p - c) & 1) { fprintf(stderr, "YT HOST: Genesis source odd\n"); abort(); }
+	return p;
+}
+void gen_vram_word(unsigned vram, unsigned word)
+{
+	vram &= 0xFFFE;
+	g_vram[vram] = (uint8_t)(word >> 8); g_vram[vram + 1] = (uint8_t)word;
+}
+int gen_cart_to_vram(unsigned vram, const void *src, unsigned words)
+{
+	const uint8_t *p = g_cart(src, words * 2);
+	if (vram & 1) return 0;
+	for (unsigned i = 0; i < words; i++) gen_vram_word(vram + 2 * i, (unsigned)p[2 * i] << 8 | p[2 * i + 1]);
+	return 1;
+}
+int gen_cart_to_cram(int first, const void *src, int count)
+{
+	if (first < 0 || count < 1 || first + count > 64) return 0;
+	const uint8_t *p = g_cart(src, (unsigned)count * 2);
+	for (int i = 0; i < count; i++) g_cram[first + i] = (uint16_t)(p[2 * i] << 8 | p[2 * i + 1]);
+	return 1;
+}
+void gen_vdp_reg(unsigned word)
+{
+	const unsigned r = (word >> 8) & 0x1F;
+	if ((word & 0xE000) == 0x8000 && r < 24) g_reg[r] = (uint8_t)word;
+}
+void gen_vsram(unsigned addr, unsigned word) { g_vsram[(addr & 0x7E) / 2 % 40] = (uint16_t)word; }
+
+/* plane B at screen pixel (x, line), line 0-223; 0 = see-through (colour 0) or display off */
+int host_genesis_pixel(int x, int line, uint8_t rgb[3])
+{
+	if (!(g_reg[1] & 0x40)) return 0;
+	const unsigned pw = (g_reg[16] & 3) == 1 ? 64 : (g_reg[16] & 3) == 3 ? 128 : 32;
+	const unsigned ph = ((g_reg[16] >> 4) & 3) == 1 ? 64 : ((g_reg[16] >> 4) & 3) == 3 ? 128 : 32;
+	const unsigned hs_at = (unsigned)(g_reg[13] & 0x3F) << 10;
+	const unsigned hs = ((unsigned)g_vram[hs_at + 2] << 8 | g_vram[hs_at + 3]) & 0x3FF;   /* plane B */
+	const unsigned vs = g_vsram[1] & 0x3FF;
+	const unsigned px = ((unsigned)x - hs) & (pw * 8 - 1), py = ((unsigned)line + vs) & (ph * 8 - 1);
+	const unsigned map = (unsigned)(g_reg[4] & 7) << 13;
+	const unsigned at = map + 2 * ((py / 8) * pw + px / 8);
+	const unsigned e = (unsigned)g_vram[at] << 8 | g_vram[at + 1];
+	unsigned tx = px & 7, ty = py & 7;
+	if (e & 0x800) tx = 7 - tx;
+	if (e & 0x1000) ty = 7 - ty;
+	const unsigned t = (e & 0x7FF) * 32 + ty * 4 + tx / 2;
+	const unsigned ci = tx & 1 ? g_vram[t] & 15 : g_vram[t] >> 4;
+	if (!ci) return 0;
+	const unsigned c = g_cram[((e >> 13) & 3) * 16 + ci];
+	rgb[0] = (uint8_t)(((c >> 1) & 7) * 255 / 7); rgb[1] = (uint8_t)(((c >> 5) & 7) * 255 / 7);
+	rgb[2] = (uint8_t)(((c >> 9) & 7) * 255 / 7);
+	return 1;
+}
+/* plane A must point at an empty map while the picture shows (the green text is at 0xC000) */
+int host_genesis_plane_a_empty(void)
+{
+	const unsigned map = (unsigned)(g_reg[2] & 0x38) << 10;
+	for (unsigned i = 0; i < 64 * 32 * 2; i++) if (g_vram[map + i]) return 0;
+	return 1;
+}
+
 void yt_picture(const uint8_t *pixels)
 {
 	for (int y = 0; y < YT_VIEW_H; y++) memcpy(canvas() + y * YT_PITCH, pixels + y * YT_VIEW_W, YT_VIEW_W);

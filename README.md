@@ -22,6 +22,7 @@
 ## REV rounds
 | Round | What was ripped out and what replaced it |
 |---|---|
+| REV3 | **The first level picture on the Genesis** (`docs/REV3_NOTES.md`): *Options → Background: Genesis* puts a level's background picture on the Genesis' plane B, where the Genesis chip scrolls it at the level's own background speed (SuperTux's parallax) for free. The 32X draws the level on top with see-through colours where the picture shows. The sideways shift redraws far fewer cells: on the PC, level 1's worst frame drops from 210 cells to 69 when the shift redraws instead of moving the picture. Uses REV2's commands for the first time. |
 | REV2 | **The Genesis picture commands** (`docs/REV2_NOTES.md`): the SH2 can now upload tiles and maps from the RAM cart into the Genesis video RAM (63), set single words (62), load Genesis colours (64), set video registers (65) and the vertical scroll (66) - through the 68000 listener's existing VDP routines plus one new one (vertical scroll RAM). Boot diagnostics on (green and white text). **This disc is a boot test for Fusion:** it must start exactly as before. |
 | REV1 | **The tiler's copying.** New rows of cells (a row coming in at the top or bottom, the redraw after a sideways shift, a new level) were copied cell by cell by the CPU; they can now be put together a line at a time in fast RAM and copied into the frame buffer by the master SH2's **DMA unit** while the next line is put together (*Options → Draw: DMA*; Draw: CPU is R11's way). **Timing: Worst** shows the slowest frame of the last 64 and what it spent its time on, including the sideways shift – the hitch the next rounds go after. |
 
@@ -32,7 +33,7 @@ REV2 starts the rebuild: the commands the Genesis planes need, tested for bootin
 
 SuperTux 0.1.3 ("Milestone 1", 2004 – the classic platformer with Tux) on the **Sega CD32X**,
 drawn with Victor Luchits' **YATSSD** tile renderer on the boot, cart and Sub-CPU layers of the
-Hurrican CD32X port. **Version REV2 (from R11).** The whole game runs from one CD: the title with its demo
+Hurrican CD32X port. **Version REV3 (from R11).** The whole game runs from one CD: the title with its demo
 level, Icyisland and both Bonus Islands with their world maps, all 76 levels, every bad guy and
 power-up, CD music, PCM sound effects, saving and high scores. The levels are kept in a 4 MB RAM
 cart once they have been read from the disc.
@@ -75,7 +76,7 @@ libxmp-lite), and so are the sound effects, the pictures and the splash.
 1. The first run fetches SuperTux 0.1.3.
 2. The build converts the data, makes the splash, the sound effects and the CD tracks, checks
    the game on the PC (`host/`), builds the SH2 program, the loader and the Sub-CPU side.
-3. **REV2: run `cd32x/subcpu/SuperTuxREV2.cue` in Fusion first** (boot test), then burn it (with its `.bin`). It has the data track and the 12
+3. **REV3: run `cd32x/subcpu/SuperTuxREV3.cue` in Fusion first** (boot test), then burn it (with its `.bin`). It has the data track and the 12
    music tracks.
 
 `DATA_ONLY=1 ./build.sh` stops after the data and the PC check (no Sega toolchain needed).
@@ -264,6 +265,7 @@ console.
 | R9 | Finding the stuck buttons: the timing panel counts pad replies that came back old (S); Options → Motion turns R6's smooth drawing off to compare. |
 | R10 | Options → Scroll RING: the picture wraps up and down, so the view never has to be shifted when Tux jumps; sideways shifts redraw only what differs and happen early on quiet frames; a strip of old picture (R4–R9) fixed. |
 | R11 | Options → Level Select (from the title): any of the 76 levels. |
+| **REV3** | Options → Background: Genesis - the background picture on the Genesis' plane B, scrolled by the Genesis chip; the level drawn over it by the 32X. |
 | **REV2** | The Genesis picture commands 62-66 (Sub-CPU) and the 68000's vertical-scroll write; boot diagnostics on. A boot test for Fusion. |
 | **REV1** | The rip and rebuild starts (see the top). Options → Draw: DMA – rows of new cells copied by the SH2's DMA unit while the next line is put together. Options → Timing: Worst – the slowest frame and what its shift cost. |
 
@@ -283,7 +285,7 @@ console.
 | `tools/stx_convert.py`, `stx_pack.py` | SuperTux 0.1.3 → the 32X's data; the disc's files and the cart layout |
 | `tools/make_stx_sfx.py`, `make_stx_splash.py`, `stx_music.sh` | sound effects, the splash, the CD tracks |
 | `tools/check_boot.py`, `check_sdram_code.py`, `where.sh` | build checks; naming the addresses on a red exception screen |
-| `docs/` | developer notes: `REV2_NOTES.md`, `REV1_NOTES.md`, `STX_HANDOFF.md`, `R11_NOTES.md`, `R10_NOTES.md`, `R9_NOTES.md`, `R8_NOTES.md`, `R7_NOTES.md`, `R6_NOTES.md`, `R5_NOTES.md`, `R4_NOTES.md`, `R3_NOTES.md`, `R2_NOTES.md`, `R1B_NOTES.md`, `BOOT_PATH_NOTES.md` |
+| `docs/` | developer notes: `REV3_NOTES.md`, `REV2_NOTES.md`, `REV1_NOTES.md`, `STX_HANDOFF.md`, `R11_NOTES.md`, `R10_NOTES.md`, `R9_NOTES.md`, `R8_NOTES.md`, `R7_NOTES.md`, `R6_NOTES.md`, `R5_NOTES.md`, `R4_NOTES.md`, `R3_NOTES.md`, `R2_NOTES.md`, `R1B_NOTES.md`, `BOOT_PATH_NOTES.md` |
 
 ## Credits
 - **SuperTux** – Bill Kendrick (original author), Tobias Glaesser (project leader), Ricardo Cruz

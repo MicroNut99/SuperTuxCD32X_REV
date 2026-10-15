@@ -24,10 +24,14 @@ level read once is there at once next time - the title's demo always, area A's a
 until other levels have used their room.
 
 HOMES.BIN (in IMAGE8.RAW): the 77 levels, then (R4) the background pictures, each {area u8
-(0 = in IMAGE8, 1 = A, 2 = B), a level's moving background u8 (picture + 1, 0 = none), first piece u16, pieces u16, disc file u16 (9 =
+(0 = in IMAGE8, 1 = A, 2 = B), a level's background picture u8 (picture + 1, 0 = none; REV3:
++ 0x80 when it moves at its own speed), first piece u16, pieces u16, disc file u16 (9 =
 IMAGE9.RAW, 200 + nnn = OJnnn.PAK), file length u32}. In IMAGE8 (area 0): the demo level as
 DEMO.PAK. A background's pack holds BACK.BIN: w u16, h u16, row
-length u16 (w + 16), pad u16, then the rows, each followed by its own first 16 pixels again. Piece c of file 9 lands at 0x120000 + c x 32 KB, of OJ files at 0x280000 + c x 32 KB.
+length u16 (w + 16), pad u16, then the rows, each followed by its own first 16 pixels again;
+REV3: and GENBG.BIN, the same picture for the Genesis' plane B (tools/stx_genesis.py). A level
+with a picture also holds LEVELG.BIN + COMPG.BIN: the level again with its pictures see-through
+where the background picture shows (colours 192-255 = 0x8000, the 32X's through bit). Piece c of file 9 lands at 0x120000 + c x 32 KB, of OJ files at 0x280000 + c x 32 KB.
 
 A LEVEL (each an OJPK pack, port/pack.h format, two files):
 
@@ -118,7 +122,14 @@ def lcm(a, b):
     return a * b // math.gcd(a, b)
 
 
-def build_level(lv, tdesc, frames, back):
+THROUGH = 0x8000                       # REV3: a 32X colour with the through bit (32X manual
+                                       # "Priority"): its pixels show the Genesis picture behind
+
+
+def build_level(lv, tdesc, frames, back, genesis=False):
+    """genesis (REV3, OPTIONS - BACKGROUND GENESIS): the level's pictures WITHOUT the background
+    picture - where it would show, colour 192 (all of 192-255 become THROUGH colours), so the
+    Genesis plane with the picture (GENBG.BIN) shows through there. Returns LEVEL.BIN, COMP.BIN."""
     ntiles = len(tdesc)
     (W, H, bgi, top, bot, track, ltime, grav, part, bscroll, sx, sy, nobj, autos, bspeed) = \
         struct.unpack(">HHHHHHHHBBhhHHH", lv[4:32])
@@ -133,7 +144,11 @@ def build_level(lv, tdesc, frames, back):
     resets = lv[o:o + 2 + 4 * nres]
 
     # the background's 16x16 blocks (picture repeated, or the gradient: a shade a line)
-    if bgi != 0xFFFF:
+    if genesis:
+        bgblocks = [np.full((TILE, TILE), 192, np.uint8)]
+        bg_of = lambda tx, ty: 0
+        colours = struct.pack(">64H", *([THROUGH] * 64))
+    elif bgi != 0xFFFF:
         px, cols, bw, bh = back[bgi]
         pic = np.frombuffer(px, np.uint8).reshape(bh, bw)
         ncol, nrow = bw // TILE, bh // TILE
@@ -275,8 +290,7 @@ def build_level(lv, tdesc, frames, back):
     for v in variants:
         body += struct.pack(">HHH", *v)
     body += objs + resets
-    pack = make_pack([("LEVEL.BIN", bytes(body)), ("COMP.BIN", bytes(colours) + b"".join(blocks))])
-    return pack, dict(res=len(res_first) - 1, blocks=len(blocks), anims=len(anims), var=len(variants),
+    return bytes(body), bytes(colours) + b"".join(blocks), dict(res=len(res_first) - 1, blocks=len(blocks), anims=len(anims), var=len(variants),
                       multi=multi_speed)
 
 
@@ -303,15 +317,24 @@ def main():
 
     nlevels = len([l for l in open(os.path.join(data, "LEVELS.TXT")) if l.strip()])
     packs, stats = [], []
+    gen_extra = 0
     for li in range(nlevels):
-        p, s = build_level(rd("L%03d.BIN" % li), tdesc, frames, back)
-        packs.append(p)
+        lvb = rd("L%03d.BIN" % li)
+        lb, cb, s = build_level(lvb, tdesc, frames, back)
+        files = [("LEVEL.BIN", lb), ("COMP.BIN", cb)]
+        if struct.unpack(">H", lvb[8:10])[0] != 0xFFFF:
+            # REV3: the same level for OPTIONS - BACKGROUND GENESIS (the picture on the Genesis)
+            lg, cg, _ = build_level(lvb, tdesc, frames, back, genesis=True)
+            files += [("LEVELG.BIN", lg), ("COMPG.BIN", cg)]
+            gen_extra += len(lg) + len(cg)
+        packs.append(make_pack(files))
         stats.append(s)
     total = sum(len(p) for p in packs)
     print("  levels: %d, %d bytes (merged pictures: %d blocks, %d animated, %d cells with variants; "
           "%d stacks with two animation speeds)" % (nlevels, total, sum(s["blocks"] for s in stats),
                                                   sum(s["anims"] for s in stats), sum(s["var"] for s in stats),
                                                   sum(s["multi"] for s in stats)))
+    print("  REV3: the levels' Genesis-background versions (LEVELG.BIN + COMPG.BIN): %d bytes" % gen_extra)
 
     # ---- homes: the demo in IMAGE8; area A from the end of IMAGE8 (world 1 from its first
     # level, as far as it goes); area B a ring for the rest, in play order
@@ -322,19 +345,25 @@ def main():
     # read only when the option is on and a level needs one - into the area B ring, like the levels (OJ1nn.PAK, nn = picture).
     nback = len(back)
     back_packs = []
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import stx_genesis
     for px, cols, bw, bh in back:
         rows = b"".join(px[y * bw:(y + 1) * bw] + px[y * bw:y * bw + TILE] for y in range(bh))
-        back_packs.append(make_pack([("BACK.BIN", struct.pack(">HHHH", bw, bh, bw + TILE, 0) + rows)]))
+        # REV3: GENBG.BIN - the same picture for the Genesis' plane B (tools/stx_genesis.py)
+        genbg = stx_genesis.genesis_background(px, cols, bw, bh)
+        back_packs.append(make_pack([("BACK.BIN", struct.pack(">HHHH", bw, bh, bw + TILE, 0) + rows),
+                                     ("GENBG.BIN", genbg)]))
     demo_bgi = 0xFFFF                  # (none resident: area A keeps room for world 1's levels)
     resident = [(n, rd(n)) for n in res_files] + [("DEMO.PAK", packs[DEMO_LEVEL])]
     homes = [None] * (nlevels + nback)
 
-    # a level's moving background: picture index + 1 in the home's second byte (0: none - a
-    # gradient, or a picture that moves with the level)
+    # a level's background picture: picture index + 1 in the home's second byte (0: none - a
+    # gradient), REV3: + 0x80 when it moves at its own speed (BACKGROUND MOVES reads it only then;
+    # BACKGROUND GENESIS always - its GENBG.BIN is in the picture's pack)
     def back_of(li):
         lv = rd("L%03d.BIN" % li)
         bgi, bspeed = struct.unpack(">H", lv[8:10])[0], struct.unpack(">H", lv[30:32])[0]
-        return 0 if bgi == 0xFFFF or bspeed == 100 else bgi + 1
+        return 0 if bgi == 0xFFFF else (bgi + 1) | (0x80 if bspeed != 100 else 0)
     level_backs = [back_of(li) for li in range(nlevels)]
 
     def homes_bin():

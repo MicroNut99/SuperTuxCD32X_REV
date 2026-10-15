@@ -131,6 +131,15 @@ uint32_t *yt_dma_line(int i);                 /* REV: line buffer 0 / 1 the tile
  * 1 on, 2 on but a transfer once failed - the CPU copies (port/plat.h plat_dma_ok). */
 void yt_set_dma(int on);
 int  yt_dma_state(void);
+/* REV3: the Genesis picture - SH2 commands 62-66 (cd32x/subcpu/main.c, docs/REV2_NOTES.md),
+ * game/yt_mars.c on the 32X, a small model of the Genesis video chip in game/yt_host.c on the PC.
+ * Sources are in the RAM cart (pointers into it); 0 = refused. */
+void gen_vram_word(unsigned vram, unsigned word);                  /* 62 */
+int  gen_cart_to_vram(unsigned vram, const void *src, unsigned words);   /* 63 (any length) */
+int  gen_cart_to_cram(int first, const void *src, int count);      /* 64 */
+void gen_vdp_reg(unsigned word);                                   /* 65: 0x8000 | reg << 8 | value */
+void gen_vsram(unsigned addr, unsigned word);                      /* 66 */
+
 /* REV: what the last yt_begin did to the canvas sideways / up-down (OPTIONS - TIMING WORST):
  * 0 nothing, 1 moved it (*us: the move's microseconds), 2 left it in place (the cells that
  * differ are drawn by the tiler instead - they show in its count) */

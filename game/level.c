@@ -28,6 +28,7 @@
 #define MAX_CELLS 15700
 #define MAX_RES   2560                 /* tools/stx_pack.py MAX_RES */
 #define NLEVELS   77
+#define DEMO_LEVEL 76                  /* misc/menu.stl - the title's demo (game/game.c, always in the cart) */
 #define PIECE     32768u
 int lw, lh, ltrack, ltime, lgrav, lstart_x, lstart_y, lparticles, lback_scroll, lautoscroll, lbkgd_speed;
 int level_n = -1;
@@ -75,7 +76,8 @@ static void read_homes(void)
 	for (int i = 0; i < n_homes; i++, h += 12)
 	{
 		homes[i].area = h[0];
-		homes[i].back = h[1];          /* a level's moving background picture + 1 (0: none) */
+		homes[i].back = h[1];          /* a level's background picture + 1 (0: none); REV3: + 0x80
+		                                  when it moves at its own speed */
 		homes[i].first = be16(h + 2); homes[i].n = be16(h + 4); homes[i].fid = be16(h + 6);
 		homes[i].flen = be32(h + 8);
 	}
@@ -133,7 +135,9 @@ static int back_home(int li)
 {
 	if (!homes_read) read_homes();
 	if (!opt_parallax || li < 0 || li >= NLEVELS || !homes[li].back) return -1;
-	const int b = NLEVELS + homes[li].back - 1;
+	if (opt_parallax == 1 && !(homes[li].back & 0x80)) return -1;   /* MOVES: only a moving one */
+	if (opt_parallax == 2 && li == DEMO_LEVEL) return -1;   /* REV3: the title never reads the disc */
+	const int b = NLEVELS + (homes[li].back & 0x7F) - 1;
 	if (b >= n_homes || homes_overlap(li, b)) return -1;
 	return b;
 }
@@ -191,6 +195,11 @@ void level_reset_map(void)
 /* the moving background (R4): its picture in the cart, 0 when the level does not move one */
 const uint8_t *back_px;
 int back_w, back_h, back_stride;
+/* REV3, OPTIONS - BACKGROUND GENESIS: the level was read with its picture on the Genesis' plane B
+ * (GENBG.BIN, tools/stx_genesis.py) and its own pictures see-through where the picture shows
+ * (LEVELG.BIN / COMPG.BIN, tools/stx_pack.py); 0 = drawn as before */
+const uint8_t *gen_bg;
+unsigned gen_bg_serial;                /* + 1 each level read (the picture is uploaded again) */
 
 void load_level(int li)
 {
@@ -198,7 +207,17 @@ void load_level(int li)
 	const int bg = back_home(li);
 	if (bg >= 0 && !home_cached(bg)) fetch(bg);     /* never overlaps the level (back_home) */
 	back_px = 0;
-	if (bg >= 0)
+	gen_bg = 0;
+	gen_bg_serial++;
+	const uint8_t *base = pack_base(li);
+	if (bg >= 0 && opt_parallax == 2)
+	{
+		/* REV3: the Genesis picture and the see-through version of the level, both or neither */
+		const uint8_t *g = pk_file(pack_base(bg), "GENBG.BIN", 0);
+		if (g && !memcmp(g, "STGB", 4) && pk_file(base, "LEVELG.BIN", 0) && pk_file(base, "COMPG.BIN", 0))
+			gen_bg = g;
+	}
+	else if (bg >= 0)
 	{
 		const uint8_t *b = pk_file(pack_base(bg), "BACK.BIN", 0);
 		if (b)
@@ -208,10 +227,9 @@ void load_level(int li)
 		}
 	}
 	level_n = li;
-	const uint8_t *base = pack_base(li);
 	uint32_t csize;
-	level_bin = pk_file(base, "LEVEL.BIN", 0);
-	const uint8_t *comp = pk_file(base, "COMP.BIN", &csize);
+	level_bin = pk_file(base, gen_bg ? "LEVELG.BIN" : "LEVEL.BIN", 0);
+	const uint8_t *comp = pk_file(base, gen_bg ? "COMPG.BIN" : "COMP.BIN", &csize);
 	if (!level_bin || !comp || memcmp(level_bin, "STX3", 4)) plat_fatal("LEVEL.BIN: NOT STX3");
 	comp_px = comp + 128;
 	lw = be16(level_bin + 4); lh = be16(level_bin + 6);

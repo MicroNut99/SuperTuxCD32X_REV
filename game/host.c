@@ -33,6 +33,8 @@ static uint32_t ticks, frame;
 static uint16_t shown_pal[256];
 static int border;
 
+int host_genesis_pixel(int x, int line, uint8_t rgb[3]);   /* game/yt_host.c (REV3) */
+uint8_t *host_cart(void);
 static const char *env(const char *n, const char *d) { const char *v = getenv(n); return v && *v ? v : d; }
 
 void plat_fatal(const char *msg) { fprintf(stderr, "FATAL: %s\n", msg); exit(1); }
@@ -50,6 +52,8 @@ static uint32_t read_file(const char *name, uint32_t off, uint32_t max)
 	fclose(f);
 	return (uint32_t)n;
 }
+
+uint8_t *host_cart(void) { return cart; }
 
 void plat_init(void)
 {
@@ -174,7 +178,11 @@ static void save_frame(const uint8_t *buf, int shift)
 		for (int x = 0; x < 320; x++)
 		{
 			const uint16_t c = shown_pal[px[x]] ? shown_pal[px[x]] : 0x0400;
-			const uint8_t rgb[3] = { (uint8_t)((c & 31) << 3), (uint8_t)((c >> 5 & 31) << 3), (uint8_t)((c >> 10 & 31) << 3) };
+			uint8_t rgb[3] = { (uint8_t)((c & 31) << 3), (uint8_t)((c >> 5 & 31) << 3), (uint8_t)((c >> 10 & 31) << 3) };
+			/* REV3: a colour with the through bit shows the Genesis picture behind (32X manual,
+			 * "Priority"; the 32X is in front - DISPMODE PRI 0 in the game), where the Genesis
+			 * has a pixel; else the 32X colour (black for 0x8000) */
+			if (c & 0x8000) host_genesis_pixel(x, line, rgb);
 			fwrite(rgb, 1, 3, f);
 		}
 	}

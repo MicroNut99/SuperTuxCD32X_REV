@@ -1,9 +1,11 @@
 #!/bin/bash
-# SuperTux CD32X REV - builds the REV2 disc: the whole of SuperTux 0.1.3 (Icyisland's 26 levels,
+# SuperTux CD32X REV - builds the REV3 disc: the whole of SuperTux 0.1.3 (Icyisland's 26 levels,
 # both Bonus Islands, the title with its demo, world maps, bad guys, power-ups, saves), half size,
 # sharpened. REV is the rip and rebuild of R11's drawing (README.md). REV2 adds the Genesis
 # picture commands to the Sub-CPU / 68000 programs (tools/check_boot.py knows the exact blocks)
-# and has the green and white boot text on (KOBO_DIAG_TEXT 1) - test it in Fusion first.
+# and has the green and white boot text on (KOBO_DIAG_TEXT 1). REV3 uses them: OPTIONS -
+# BACKGROUND GENESIS puts a level's background picture on the Genesis' plane B
+# (tools/stx_genesis.py, docs/REV3_NOTES.md).
 #
 # The steps are Hurrican CD32X's build (= the OpenJazz port's J19b, the last disc proven on the
 # console), with SuperTux's data in place of Hurrican's:
@@ -25,7 +27,7 @@ SRC="${SUPERTUX:-$HERE/SuperTux-0.1.3}"
 OUT="$HERE/build"
 ROMS="$HERE/cd32x/subcpu/ROMS"
 MARKER="SH2-OPENLARA-CD-OL1-LOADER"
-DISC=SuperTuxREV2
+DISC=SuperTuxREV3
 mkdir -p "$OUT" "$ROMS"
 
 echo "==> boot path check (must be Hurrican CD32X's, unchanged)"

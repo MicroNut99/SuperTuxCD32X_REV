@@ -26,7 +26,7 @@ int opt_music = 1, opt_timing = 0, opt_swap = 0, opt_lives = START_LIVES;
 int opt_smooth = 1;                    /* R9: OPTIONS - MOTION (R6's drawing between steps) */
 int opt_ring = 1;                      /* R10: OPTIONS - SCROLL RING (1) / CLASSIC (0) */
 int opt_dma = 0;                       /* REV: OPTIONS - DRAW <CPU> (0) / <DMA> (1) */
-int opt_parallax = 0;                  /* R4: OPTIONS - BACKGROUND MOVES */
+int opt_parallax = 0;                  /* R4: OPTIONS - BACKGROUND FIXED 0 / MOVES 1; REV3: GENESIS 2 */
 
 void ps_reset(void)
 {
@@ -97,7 +97,71 @@ int step_clock(void)
 	return steps > 10 ? 10 : steps;
 }
 
-void present_view(void) { plat_present_scroll(palette, yt_scroll_y(), yt_scroll_x(), YT_VIEW_H); }
+/* ------------------------------------------------------------------ REV3: the Genesis picture
+ * OPTIONS - BACKGROUND GENESIS: a level read with it (game/level.c gen_bg) shows its background
+ * picture on the Genesis' plane B, behind the 32X (the level's own pictures have through-bit
+ * colours where the picture shows - tools/stx_pack.py). The Genesis scrolls it with its own
+ * scroll registers at the level's background speed (SuperTux's bkgd_speed): no drawing at all.
+ * Each frame that draws the level asks for it (gen_frame); every frame shown decides
+ * (gen_present, from present_view): the first level frame uploads the picture (GENBG.BIN:
+ * palettes, tiles, plane map - SH2 commands 64 and 63) and switches the Genesis display on with
+ * plane A pointed at the empty map at VRAM 0xB000 (the green / white boot text stays at 0xC000,
+ * hidden); the first frame of anything else switches it off and plane A back. The picture is
+ * 0.8 x the 32X's size (tools/stx_genesis.py), so it moves 0.8 x as many pixels. */
+static int gen_want, gen_on;
+static unsigned gen_up_serial = 0xFFFFFFFFu;
+static uint16_t gen_hs = 0xFFFF, gen_vs = 0xFFFF, gen_want_hs, gen_want_vs;
+static void gen_frame(int cx, int cy)
+{
+	if (!gen_bg) return;
+	gen_want = 1;
+	const int bx = cx * lbkgd_speed / 100 * 4 / 5;
+	gen_want_hs = (uint16_t)(-bx & 0x3FF);
+	/* up / down: the 192-line picture over the 176-line view, the level's height mapped onto the
+	 * 16 lines it can move; the view starts at screen line 12 */
+	const int travel = lh * YT_TILE - YT_VIEW_H;
+	int by = travel > 0 ? cy * 16 / travel : 0;
+	if (by < 0) by = 0;
+	if (by > 16) by = 16;
+	gen_want_vs = (uint16_t)((by - 12) & 0x3FF);
+}
+static void gen_present(void)
+{
+	if (gen_want && gen_bg)
+	{
+		if (gen_up_serial != gen_bg_serial)
+		{
+			if (gen_on) { gen_vdp_reg(0x8134); gen_on = 0; }   /* no half-loaded picture */
+			const unsigned n = be16(gen_bg + 4);
+			gen_cart_to_cram(0, gen_bg + 8, 64);
+			gen_cart_to_vram(0xE000, gen_bg + 136, 64 * 32);
+			gen_cart_to_vram(0x1000, gen_bg + 4232, n * 16);
+			gen_up_serial = gen_bg_serial;
+			gen_hs = gen_vs = 0xFFFF;
+		}
+		if (gen_want_hs != gen_hs) { gen_vram_word(0xAC02, gen_want_hs); gen_hs = gen_want_hs; }   /* plane B */
+		if (gen_want_vs != gen_vs) { gen_vsram(2, gen_want_vs); gen_vs = gen_want_vs; }
+		if (!gen_on)
+		{
+			gen_vdp_reg(0x822C);       /* plane A -> 0xB000 (never written: empty) */
+			gen_vdp_reg(0x8174);       /* Genesis display on (V interrupt stays on) */
+			gen_on = 1;
+		}
+	}
+	else if (gen_on)
+	{
+		gen_vdp_reg(0x8134);           /* display off, as the game had it */
+		gen_vdp_reg(0x8230);           /* plane A back to 0xC000 (md_init_hw's) */
+		gen_on = 0;
+	}
+	gen_want = 0;
+}
+
+void present_view(void)
+{
+	gen_present();
+	plat_present_scroll(palette, yt_scroll_y(), yt_scroll_x(), YT_VIEW_H);
+}
 
 /* ------------------------------------------------------------------ the world's rules (world.cpp) */
 static int counting_distros, distro_counter;
@@ -791,7 +855,8 @@ static void draw_world_now(void)
 	view_cx = cx; view_cy = cy;
 	frame_cells = 0;
 	level_animate(game_ms);
-	const int parallax = opt_parallax && back_px && lbkgd_speed != 100;
+	gen_frame(cx, cy);                 /* REV3: the Genesis picture (no-op unless the level has it) */
+	const int parallax = opt_parallax == 1 && back_px && lbkgd_speed != 100;
 	if (parallax != drew_parallax)
 	{
 		yt_invalidate();                 /* the canvas holds the other kind of picture */
@@ -945,6 +1010,7 @@ static void bg_intro(void)
 	if (cy < 0) cy = 0;
 	yt_begin(cx, cy);
 	yt_layers(0, 0);
+	gen_frame(cx, cy);                 /* REV3 */
 	intro_words(session_level, 0);
 }
 
