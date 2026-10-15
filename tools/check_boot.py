@@ -34,8 +34,29 @@ SWITCHES = {
          b"#define SCD_DIAG_TEXT 0")],
 }
 
+# REV2 (SuperTux CD32X REV): the Genesis picture commands 62-66 (cd32x/subcpu/main.c) and the
+# 68000's set_vsram (command 36, cd32x/subcpu/hw_md.s), added with Micronut99's approval
+# (Oct 2026: test the Genesis-plane idea in REV). These exact blocks must be present; they are
+# taken out before the md5 comparison, so the rest of each file must still be Hurrican's byte
+# for byte. Nothing in the boot sequence calls them (docs/REV2_NOTES.md).
+REV2_ADDITIONS = {
+    'cd32x/subcpu/hw_md.s': [
+        (b'        .equ    MD_CMD_END, 37              /* KOBO K19: + set_vdp_reg (34); D32X M1: + start_d32xr (35); REV2: + set_vsram (36) */',
+         b'        .equ    MD_CMD_END, 36              /* KOBO K19: + set_vdp_reg (34); D32X M1: + start_d32xr (35) */'),
+        (b"        .word   start_d32xr - cmd_table         /* 35  D32X M1 */\n        .word   set_vsram - cmd_table           /* 36  SuperTux REV2 */\n\n| SuperTux REV2: void set_vsram(int addr, int word);\n| One word into the VDP's vertical scroll RAM (VSRAM) at byte address addr (0 = plane A,\n| 2 = plane B in full-screen mode; up to 0x4E in 2-cell column mode).  WHY a command of its\n| own: VSRAM is not video RAM - set_vram's address command always targets VRAM (0x4000....),\n| a VSRAM write needs the code 0x40000010.  Same shape as set_vram: auto-increment 2, the\n| 32-bit address command in ONE move.l (an interrupt cannot split it), then the data word.\n| Runs in the command loop, never inside an interrupt.\nset_vsram:\n        lea     0xC00000,a1\n        move.w  #0x8F02,4(a1)\n        move.l  4(sp),d1\n        andi.l  #0x0000007E,d1\n        swap    d1\n        ori.l   #0x40000010,d1\n        move.l  d1,4(a1)\n        move.l  8(sp),d0\n        move.w  d0,(a1)\n        moveq   #0,d0\n        rts\n",
+         b'        .word   start_d32xr - cmd_table         /* 35  D32X M1 */\n'),
+    ],
+    'cd32x/subcpu/main.c': [
+        (b"#define MD_CMD_START_D32XR    35         /* D32X M1: 68K -> D32XR's _start (never returns) */\n#define MD_CMD_SET_VRAM        5         /* hw_md.s set_vram(addr, word) - Chilly's, unused until REV2 */\n#define MD_CMD_COPY_VRAM       7         /* hw_md.s copy_vram(addr, src, words) */\n#define MD_CMD_SET_PALETTE    12         /* hw_md.s set_palette(src, index, count) */\n#define MD_CMD_SET_VSRAM      36         /* SuperTux REV2: hw_md.s set_vsram(addr, word) */\n",
+         b"#define MD_CMD_START_D32XR    35         /* D32X M1: 68K -> D32XR's _start (never returns) */\n"),
+        (b"        /* ---------------------------------------------------------------------------------\n           SuperTux REV2 - THE GENESIS PICTURE FOR THE SH2 (commands 62-66).\n           The 68000 listener could always write the Genesis VDP (Chilly's set_vram /\n           copy_vram / set_palette, Kobo's set_vdp_reg) but no SH2 command reached them: the\n           SH2 could only switch the Genesis text on / off (52).  These five let the game use\n           the Genesis planes - tiles and maps uploaded from the RAM cart, scrolled by\n           register.  They run only when the SH2 sends them, i.e. after the game has started:\n           nothing in the boot sequence calls them.  Parameters as the other commands: COMM2\n           (16 bits) and COMM8 (32 bits: COMM8 and COMM10), written by the SH2 BEFORE COMM0;\n           done = COMM0 cleared.  Cart sources are read by the 68000 through the 32X bank\n           window 0x900000 (RV 0 - as CMD 46's read-back), so the SH2 is never locked out.\n             62  VRAM word     COMM2 = VRAM byte address, COMM8 (high 16) = the word\n             63  cart -> VRAM  COMM2 = VRAM byte address, COMM8L = words << 22 | cart offset\n                               (even, < 4 MB; 1..1023 words); reply COMM12 = 1 ok, 0 refused\n             64  cart -> CRAM  COMM2 = first colour (0-63), COMM8L = count << 22 | cart offset\n                               (1..64 colours); reply COMM12 = 1 ok, 0 refused\n             65  VDP register  COMM2 = 0x8000 | reg << 8 | value (registers 0-23 only)\n             66  VSRAM word    COMM2 = VSRAM byte address (0 plane A, 2 plane B), COMM8 (high\n                               16) = the vertical scroll\n           A copy that crosses a 1 MB bank of the window is done in two parts. */\n        else if (cmd == 62 || cmd == 66) {\n            int addr = do_md_cmd1(MD_CMD_READ_32X_16, 0xA15122) & 0xFFFF;\n            int word = do_md_cmd1(MD_CMD_READ_32X_16, 0xA15128) & 0xFFFF;\n            if (cmd == 62) do_md_cmd2(MD_CMD_SET_VRAM, addr & 0xFFFE, word);\n            else do_md_cmd2(MD_CMD_SET_VSRAM, addr & 0x7E, word);\n            do_md_cmd2(MD_CMD_WRITE_32X_16, 0xA15120, 0);\n        }\n        else if (cmd == 63 || cmd == 64) {\n            int dst = do_md_cmd1(MD_CMD_READ_32X_16, 0xA15122) & 0xFFFF;\n            uint32_t p = (uint32_t)do_md_cmd1(MD_CMD_READ_32X_32, 0xA15128);\n            uint32_t coff = p & 0x3FFFFF;\n            int n = (int)(p >> 22);\n            int ok = n > 0 && !(coff & 1) && (cmd == 63 ? !(dst & 1) : (dst < 64 && dst + n <= 64));\n            while (ok && n > 0) {\n                /* the part inside this 1 MB bank of the window */\n                int fit = (int)((0x100000 - (coff & 0xFFFFF)) >> 1);\n                int k = n < fit ? n : fit;\n                do_md_cmd2(MD_CMD_WRITE_32X_16, 0xA15104, (int)(coff >> 20) & 3);\n                if (cmd == 63) do_md_cmd3(MD_CMD_COPY_VRAM, dst, 0x900000 + (coff & 0xFFFFF), k);\n                else do_md_cmd3(MD_CMD_SET_PALETTE, 0x900000 + (coff & 0xFFFFF), dst, k);\n                n -= k;\n                coff += (uint32_t)k * 2;\n                dst += cmd == 63 ? k * 2 : k;\n            }\n            do_md_cmd2(MD_CMD_WRITE_32X_16, 0xA1512C, ok);\n            do_md_cmd2(MD_CMD_WRITE_32X_16, 0xA15120, 0);\n        }\n        else if (cmd == 65) {\n            int w = do_md_cmd1(MD_CMD_READ_32X_16, 0xA15122) & 0xFFFF;\n            if ((w & 0xE000) == 0x8000 && ((w >> 8) & 0x1F) <= 23) do_md_cmd1(MD_CMD_SET_VDP_REG, w);\n            do_md_cmd2(MD_CMD_WRITE_32X_16, 0xA15120, 0);\n        }\n        else if (cmd == 48) {\n            /* (K5: normally handled by the fast path",
+         b'        else if (cmd == 48) {\n            /* (K5: normally handled by the fast path'),
+    ],
+}
+
 bad = 0
 switched = 0
+added = 0
 listed = 0
 for line in open(os.path.join(HERE, "docs/BOOT_FILES.md5")):
     if line.startswith("#") or not line.strip():
@@ -49,6 +70,13 @@ for line in open(os.path.join(HERE, "docs/BOOT_FILES.md5")):
         bad += 1
         continue
     data = open(p, "rb").read()
+    for here, orig in REV2_ADDITIONS.get(name, []):
+        if data.count(here) == 1:
+            data = data.replace(here, orig)
+            added += 1
+        else:
+            print("REV2     %s: a REV2 command block is missing or changed" % name)
+            bad += 1
     for here, orig in SWITCHES.get(name, []):
         if data.count(here) == 1:
             data = data.replace(here, orig)
@@ -63,4 +91,4 @@ if bad:
     print("*** the boot path differs from Hurrican CD32X's in %d place(s) - stopping" % bad)
     sys.exit(1)
 state = "release: no diagnostics text, the splash only" if switched == 0 else "%d of 4 diagnostics switches on" % switched
-print("boot path: %d files identical to Hurrican CD32X's (%s)" % (listed, state))
+print("boot path: %d files identical to Hurrican CD32X's (%s) + %d REV2 command blocks" % (listed, state, added))
