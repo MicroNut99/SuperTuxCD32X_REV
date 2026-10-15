@@ -1281,6 +1281,7 @@ void demo_run(void)
 			tux_init(lstart_x, lstart_y);
 			scroll_x = 0;
 			camera_y(1);
+			gl_map_reset();             /* REV6: the Genesis map jumps back with the view */
 		}
 		tux.can_jump = 1;
 		const fx last = tux.x;

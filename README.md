@@ -22,6 +22,7 @@
 ## REV rounds
 | Round | What was ripped out and what replaced it |
 |---|---|
+| REV6 | **The game is built from Genesis tiles** (`docs/REV6_NOTES.md`): every level and the title's demo are Genesis tiles on the Genesis' planes, scrolled by the Genesis chip, the way Sonic CD does it; the 32X draws only what moves. The 32X-drawn version of the levels and the background picture packs are gone from the disc, and so are the Draw and Background options - there is no switch. |
 | REV5 | **Fixes for REV4 on the console** (`docs/REV5_NOTES.md`): *Draw: Genesis* no longer needs the background picture's own pack in the cart - every level now carries its Genesis background inside its own data, so the level can't fall back to the 32X when the picture's pack is not there. The timing line shows **DG** (the Genesis is drawing this level) or **DX** (Draw: Genesis is on but this level was drawn by the 32X). The options menu says a Draw / Background change applies from the next level. **Saves fixed:** they now go to the RAM cart's save area (piece 13, the way OpenJazz and OpenLara save), not the Sega CD's backup RAM, which never worked. No boot stack changes. |
 | REV4 | **The rip and tear: the level on the Genesis** (`docs/REV4_NOTES.md`): *Options → Draw: Genesis* puts the whole level on the Genesis' plane A and its background on plane B; the Genesis chip scrolls both, the way Sonic CD does. The 32X draws only what moves - Tux, the bad guys, bullets, coins in flight, snow, clouds, scores - and clears just those spots again. No canvas move, no tile redraws, no hitch. The level's colours are the Genesis' (3 palettes of 15 for the level, 1 for the background); the sprites keep the 32X's 256. One more command for the boot stack: 67, map columns into video RAM. |
 | REV3 | **The first level picture on the Genesis** (`docs/REV3_NOTES.md`): *Options → Background: Genesis* puts a level's background picture on the Genesis' plane B, where the Genesis chip scrolls it at the level's own background speed (SuperTux's parallax) for free. The 32X draws the level on top with see-through colours where the picture shows. The sideways shift redraws far fewer cells: on the PC, level 1's worst frame drops from 210 cells to 69 when the shift redraws instead of moving the picture. Uses REV2's commands for the first time. |
@@ -35,7 +36,7 @@ REV2 starts the rebuild: the commands the Genesis planes need, tested for bootin
 
 SuperTux 0.1.3 ("Milestone 1", 2004 – the classic platformer with Tux) on the **Sega CD32X**,
 drawn with Victor Luchits' **YATSSD** tile renderer on the boot, cart and Sub-CPU layers of the
-Hurrican CD32X port. **Version REV5 (from R11).** The whole game runs from one CD: the title with its demo
+Hurrican CD32X port. **Version REV6 (from R11).** The whole game runs from one CD: the title with its demo
 level, Icyisland and both Bonus Islands with their world maps, all 76 levels, every bad guy and
 power-up, CD music, PCM sound effects, saving and high scores. The levels are kept in a 4 MB RAM
 cart once they have been read from the disc.
@@ -78,7 +79,7 @@ libxmp-lite), and so are the sound effects, the pictures and the splash.
 1. The first run fetches SuperTux 0.1.3.
 2. The build converts the data, makes the splash, the sound effects and the CD tracks, checks
    the game on the PC (`host/`), builds the SH2 program, the loader and the Sub-CPU side.
-3. **REV5: `cd32x/subcpu/SuperTuxREV5.cue`** - no boot stack changes since REV4 (which booted), so run it in Fusion as usual, then burn it (with its `.bin`). It has the data track and the 12
+3. **REV6: `cd32x/subcpu/SuperTuxREV6.cue`** - no boot stack changes since REV4 (which booted), so run it in Fusion as usual, then burn it (with its `.bin`). It has the data track and the 12
    music tracks.
 
 `DATA_ONLY=1 ./build.sh` stops after the data and the PC check (no Sega toolchain needed).
@@ -139,19 +140,18 @@ left/right changes a setting. *Options → Jump* swaps A and B (C/B jump, A runs
 - Animated tiles, snow and clouds, floating scores, broken bricks.
 - **Pause menu:** Continue, Restart Level, Options, Abort Level, Main Menu.
 - **Options:** music, lives for a new game, the timing line (off / on / worst), the jump button,
-  the background (fixed or moving), motion (smooth / steps), scroll (ring / classic), draw
-  (CPU / DMA), level select (from the title), controls, the story, high scores, credits (with a
+  motion (smooth / steps), scroll (ring / classic, the world map's), level select (from the title), controls, the story, high scores, credits (with a
   music player: left/right plays SuperTux's songs).
 - CD music (SuperTux's 12 tracks), 20 sound effects on the Sega CD's PCM chip, high scores and
-  saves in the Sega CD's backup RAM.
+  saves in the RAM cart's save area (REV5).
 
 ## Known limitations
 - **Half size:** SuperTux's 640 × 480 is drawn at 320 × 240 (tiles and sprites sharpened, the
   backgrounds not); the 32X shows the
   whole width and 352 of the 480 lines (176 pixels), with the camera following Tux up and down.
   The status line is in a panel under the level.
-- The background picture scrolls with the level unless *Options → Background* is set to
-  *Moves* (SuperTux's own half-speed scrolling; it costs frames, so it is off by default).
+- REV6: the levels are Genesis tiles - the Genesis' colours (3 palettes of 15 for a level, 1
+  for its background), the background at SuperTux's own speed on the Genesis' plane B.
 - 24 snowflakes instead of SuperTux's 128; the far flakes are not drawn over tiles.
 - No level editor and no Quit in the main menu.
 - Levels cannot be read while music plays (the CD drive can't do both), so the music stops
@@ -169,9 +169,8 @@ left/right changes a setting. *Options → Jump* swaps A and B (C/B jump, A runs
   picture was moved and that took 3.1 ms, `ML` it was left in place and the cells that differ
   were drawn – they are in `T` and `N`), `N` its cells and `D` how many of them went through
   the DMA rows.
-- With the timing on, the second panel line ends in `D0` (Draw: CPU), `D1` (Draw: DMA) or `D!`
-  (a DMA transfer once never finished: the CPU copies from then on, until the console is
-  switched off).
+- With the timing on, the second panel line ends in `DG` in a level (REV6: the Genesis draws
+  every level).
 
 **Status: 38–56 frames per second** in Icyisland's first level, measured on real hardware with
 the timing line (*Options → Timing*). R2 ran at 17–22.
@@ -267,6 +266,7 @@ console.
 | R9 | Finding the stuck buttons: the timing panel counts pad replies that came back old (S); Options → Motion turns R6's smooth drawing off to compare. |
 | R10 | Options → Scroll RING: the picture wraps up and down, so the view never has to be shifted when Tux jumps; sideways shifts redraw only what differs and happen early on quiet frames; a strip of old picture (R4–R9) fixed. |
 | R11 | Options → Level Select (from the title): any of the 76 levels. |
+| **REV6** | The game built from Genesis tiles: every level and the demo on the Genesis' planes, no 32X version of the levels, no Draw / Background switch. |
 | **REV5** | Draw: Genesis keeps the level on the Genesis (its background inside the level's data); DG / DX on the timing line; saves in the RAM cart's save area. |
 | **REV4** | Options → Draw: Genesis - the level on the Genesis' planes, the 32X draws only the sprites. Command 67 (columns into VRAM). |
 | **REV3** | Options → Background: Genesis - the background picture on the Genesis' plane B, scrolled by the Genesis chip; the level drawn over it by the 32X. |
@@ -289,7 +289,7 @@ console.
 | `tools/stx_convert.py`, `stx_pack.py` | SuperTux 0.1.3 → the 32X's data; the disc's files and the cart layout |
 | `tools/make_stx_sfx.py`, `make_stx_splash.py`, `stx_music.sh` | sound effects, the splash, the CD tracks |
 | `tools/check_boot.py`, `check_sdram_code.py`, `where.sh` | build checks; naming the addresses on a red exception screen |
-| `docs/` | developer notes: `REV5_NOTES.md`, `REV4_NOTES.md`, `REV3_NOTES.md`, `REV2_NOTES.md`, `REV1_NOTES.md`, `STX_HANDOFF.md`, `R11_NOTES.md`, `R10_NOTES.md`, `R9_NOTES.md`, `R8_NOTES.md`, `R7_NOTES.md`, `R6_NOTES.md`, `R5_NOTES.md`, `R4_NOTES.md`, `R3_NOTES.md`, `R2_NOTES.md`, `R1B_NOTES.md`, `BOOT_PATH_NOTES.md` |
+| `docs/` | developer notes: `REV6_NOTES.md`, `REV5_NOTES.md`, `REV4_NOTES.md`, `REV3_NOTES.md`, `REV2_NOTES.md`, `REV1_NOTES.md`, `STX_HANDOFF.md`, `R11_NOTES.md`, `R10_NOTES.md`, `R9_NOTES.md`, `R8_NOTES.md`, `R7_NOTES.md`, `R6_NOTES.md`, `R5_NOTES.md`, `R4_NOTES.md`, `R3_NOTES.md`, `R2_NOTES.md`, `R1B_NOTES.md`, `BOOT_PATH_NOTES.md` |
 
 ## Credits
 - **SuperTux** – Bill Kendrick (original author), Tobias Glaesser (project leader), Ricardo Cruz

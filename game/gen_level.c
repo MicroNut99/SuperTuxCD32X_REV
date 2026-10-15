@@ -268,6 +268,7 @@ void gl_map_reset(void)
 	for (int i = 0; i < NCOLS; i++) col_at[i] = -1;
 	n_cell_q = 0;
 	reload_all = 1;                    /* every column again at the next frame (a restart) */
+	pend_valid = 0;                    /* REV6: not at the camera of a frame drawn before it */
 }
 
 /* from present_view: a level frame hands its camera over; anything else switches the Genesis off */

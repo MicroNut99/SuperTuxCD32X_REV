@@ -8,7 +8,7 @@
  *   BONUS LEVELS   Bonus Island I and II (world maps, each with its own save), and LEVEL SELECT
  *                  (ours: any of the 76 levels on its own - world 1 and both bonus sets)
  *   OPTIONS        music, lives for a new game, the timing line (REV1: off / on / worst), the
- *                  A/B buttons, background, motion, scroll, draw (REV1: CPU / DMA rows), level
+ *                  A/B buttons, motion, scroll (REV6: no background / draw - the levels are Genesis tiles), level
  *                  select, controls, the story, the high scores, the credits
  *   CREDITS        SuperTux's CREDITS over its oiltux picture (LEFT/RIGHT: its songs)
  * In a level, START: CONTINUE, RESTART LEVEL, OPTIONS, ABORT LEVEL (back to the map), MAIN MENU.
@@ -49,7 +49,7 @@ static void save_unpack(const uint8_t *b)
 {
 	memset(slots, 0, sizeof slots);
 	if (memcmp(b, "STX2", 4)) { hs_defaults(); return; }
-	opt_music = b[4] & 1; opt_timing = (b[5] & 1) ? 1 + ((b[5] >> 4) & 1) : 0; opt_dma = (b[5] >> 7) & 1 ? 2 : (b[5] >> 5) & 1; yt_set_dma(opt_dma == 1); opt_parallax = (b[5] >> 6) & 1 ? 2 : (b[5] >> 1) & 1; opt_smooth = !((b[5] >> 2) & 1); opt_ring = !((b[5] >> 3) & 1); yt_set_ring(opt_ring); opt_swap = b[6] & 1;
+	opt_music = b[4] & 1; opt_timing = (b[5] & 1) ? 1 + ((b[5] >> 4) & 1) : 0; /* REV6: bits 1, 5, 6, 7 (background / draw) ignored */ opt_smooth = !((b[5] >> 2) & 1); opt_ring = !((b[5] >> 3) & 1); yt_set_ring(opt_ring); opt_swap = b[6] & 1;
 	opt_lives = b[7] >= 1 && b[7] <= 9 ? b[7] : START_LIVES;
 	for (int i = 0; i < HS_N; i++)
 	{
@@ -195,6 +195,7 @@ int menu_choose(const char *title, const char *const *items, int n, int sel, BgF
 		if (hit & (PAD_A | PAD_C | PAD_START)) return sel;
 		if (hit & PAD_B) return -1;
 		plat_wait_flip();
+		gl_after_flip(game_ms);        /* REV6: the title's demo is Genesis tiles too - its scroll after the flip */
 		bg();
 		const int top = m_top;
 		const int rows = n < m_rows ? n : m_rows;
@@ -221,6 +222,7 @@ void message_screen(BgFn bg, const char *l1, const char *l2, const char *l3, int
 		const uint32_t ms = plat_ticks_ms() - t0;
 		if (ms >= (uint32_t)max_ms || (ms >= (uint32_t)min_ms && (hit & (PAD_A | PAD_B | PAD_C | PAD_START)))) break;
 		plat_wait_flip();
+		gl_after_flip(game_ms);        /* REV6: the title's demo is Genesis tiles too - its scroll after the flip */
 		bg();
 		menu_panel(l1 ? l1 : "", l2 ? l2 : "");
 		(void)l3;
@@ -459,13 +461,14 @@ void options_page(BgFn bg)
 		for (int i = 0; i < O_N; i++)
 		{
 			if (i == O_LEVELS && !from_title) continue;
+			if (i == O_BACKGROUND || i == O_DRAW) continue;   /* REV6: the levels are Genesis tiles - no switch */
 			if (i == sel) at = ns;
 			shown[ns] = i;
 			items[ns++] = rows[i];
 		}
 		list_style();
 		m_lr = 1;                      /* LEFT / RIGHT change a setting */
-		const int pick = menu_choose("OPTIONS", items, ns, at, bg, "L/R CHANGE  B BACK  DRAW: NEXT LEVEL");
+		const int pick = menu_choose("OPTIONS", items, ns, at, bg, "LEFT/RIGHT/A CHANGE  B BACK");
 		const int c = pick < 0 ? -1 : shown[pick];
 		const int d = menu_dir ? menu_dir : 1;
 		m_lr = 0;

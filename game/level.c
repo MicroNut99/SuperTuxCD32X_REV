@@ -127,31 +127,12 @@ static int homes_overlap(int i, int j)
 	return a0 < b1 && b0 < a1;
 }
 
-/* R4: the background picture level li moves at its own speed (OPTIONS - BACKGROUND MOVES), as
- * a home index, or -1: the option is off, the level has none (a gradient, or a picture that
- * moves with the level), or the picture's home in the ring overlaps the level's own (then both
- * cannot be in the cart at once: the level is drawn as with the option off) */
-static int back_home(int li)
-{
-	if (!homes_read) read_homes();
-	if (li < 0 || li >= NLEVELS || !homes[li].back) return -1;
-	/* who needs the picture's pack: MOVES (only a moving picture), REV3's BACKGROUND GENESIS and
-	 * (REV5: not DRAW GENESIS - its plane B is in the level's GENLVL.BIN, except for the title's
-	 * demo, drawn by the 32X) - never the title's demo (it never reads the disc) */
-	if (opt_dma == 2 && li != DEMO_LEVEL) return -1;
-	const int genesis = opt_parallax == 2;
-	if (genesis ? li == DEMO_LEVEL : !(opt_parallax == 1 && (homes[li].back & 0x80))) return -1;
-	const int b = NLEVELS + (homes[li].back & 0x7F) - 1;
-	if (b >= n_homes || homes_overlap(li, b)) return -1;
-	return b;
-}
+/* REV6: no background picture packs (R4's back_home is gone): each level's GENLVL.BIN has its plane B */
 
 /* the level (and the background picture it moves) are in the cart: no disc read */
 int level_cached(int li)
 {
-	if (!home_cached(li)) return 0;
-	const int bg = back_home(li);
-	return bg < 0 || home_cached(bg);
+	return home_cached(li);           /* REV6: no picture packs */
 }
 
 /* a level's or a picture's pieces from the disc to its home; what it overwrites is gone */
@@ -165,7 +146,7 @@ static void fetch(int li)
 	for (int tries = 0; tries < 3; tries++)
 	{
 		if (cart_load(h->fid, h->flen, h->first, h->n, level_progress)
-		    && pk_file(pack_base(li), li < NLEVELS ? "LEVEL.BIN" : "BACK.BIN", 0))
+		    && pk_file(pack_base(li), "GENLVL.BIN", 0))   /* REV6 */
 		{
 			in_cart[li] = 1;
 			return;
@@ -214,46 +195,23 @@ unsigned gen_bg_serial;                /* + 1 each level read (the picture is up
 
 void load_level(int li)
 {
+	/* REV6: the game is built from Genesis tiles - every level (the title's demo too) is its
+	 * GENLVL.BIN (tiles, map columns, plane B) on the Genesis' planes and LEVELG.BIN / COMPG.BIN
+	 * (the rules, the pictures the 32X draws over the moving things); nothing else */
 	if (!home_cached(li)) fetch(li);
-	const int bg = back_home(li);
-	if (bg >= 0 && !home_cached(bg)) fetch(bg);     /* never overlaps the level (back_home) */
 	back_px = 0;
 	gen_bg = 0;
 	gl_level = 0; gl_fell = 0;
 	gen_bg_serial++;
 	const uint8_t *base = pack_base(li);
-	if (opt_dma == 2 && li != DEMO_LEVEL)
-	{
-		/* REV4: the whole level on the Genesis - its GENLVL.BIN (REV5: the background's plane B
-		 * inside it, no other pack needed); without it it is drawn by the 32X */
-		const uint8_t *g = pk_file(base, "GENLVL.BIN", 0);
-		if (g && !memcmp(g, "STGL", 4) && be16(g + 18) && pk_file(base, "LEVELG.BIN", 0) && pk_file(base, "COMPG.BIN", 0))
-			gl_level = g;
-		else gl_fell = 1;
-	}
-	if (gl_level) { }
-	else if (bg >= 0 && opt_parallax == 2)
-	{
-		/* REV3: the Genesis picture and the see-through version of the level, both or neither */
-		const uint8_t *g = pk_file(pack_base(bg), "GENBG.BIN", 0);
-		if (g && !memcmp(g, "STGB", 4) && pk_file(base, "LEVELG.BIN", 0) && pk_file(base, "COMPG.BIN", 0))
-			gen_bg = g;
-	}
-	else if (bg >= 0)
-	{
-		const uint8_t *b = pk_file(pack_base(bg), "BACK.BIN", 0);
-		if (b)
-		{
-			back_w = be16(b); back_h = be16(b + 2); back_stride = be16(b + 4);
-			back_px = b + 8;
-		}
-	}
+	const uint8_t *g = pk_file(base, "GENLVL.BIN", 0);
+	if (!g || memcmp(g, "STGL", 4) || !be16(g + 18)) plat_fatal("GENLVL.BIN: NO GENESIS LEVEL");
+	gl_level = g;
 	level_n = li;
 	uint32_t csize;
-	const int see_through = gen_bg || gl_level;
-	level_bin = pk_file(base, see_through ? "LEVELG.BIN" : "LEVEL.BIN", 0);
-	const uint8_t *comp = pk_file(base, see_through ? "COMPG.BIN" : "COMP.BIN", &csize);
-	if (!level_bin || !comp || memcmp(level_bin, "STX3", 4)) plat_fatal("LEVEL.BIN: NOT STX3");
+	level_bin = pk_file(base, "LEVELG.BIN", 0);
+	const uint8_t *comp = pk_file(base, "COMPG.BIN", &csize);
+	if (!level_bin || !comp || memcmp(level_bin, "STX3", 4)) plat_fatal("LEVELG.BIN: NOT STX3");
 	comp_px = comp + 128;
 	lw = be16(level_bin + 4); lh = be16(level_bin + 6);
 	ltrack = be16(level_bin + 8); ltime = be16(level_bin + 10); lgrav = be16(level_bin + 12);

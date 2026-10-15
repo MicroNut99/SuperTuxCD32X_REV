@@ -324,11 +324,11 @@ def main():
     pic_cache = {}
     for li in range(nlevels):
         lvb = rd("L%03d.BIN" % li)
-        lb, cb, s = build_level(lvb, tdesc, frames, back)
-        files = [("LEVEL.BIN", lb), ("COMP.BIN", cb)]
+        # REV6: the game is built from Genesis tiles only - no 32X-drawn version of a level
+        files = []
         # REV3: the same level see-through where the background shows, for OPTIONS - BACKGROUND
         # GENESIS (a picture on the Genesis) and REV4's DRAW GENESIS (all levels)
-        lg, cg, _ = build_level(lvb, tdesc, frames, back, genesis=True)
+        lg, cg, s = build_level(lvb, tdesc, frames, back, genesis=True)
         files += [("LEVELG.BIN", lg), ("COMPG.BIN", cg)]
         gen_extra += len(lg) + len(cg)
         # REV4: the level as Genesis tiles and map columns (tools/stx_genesis.py genesis_level)
@@ -361,9 +361,10 @@ def main():
     # R4: the background pictures for OPTIONS - BACKGROUND MOVES (SuperTux's bkgd_speed, game/
     # game.c): 320 x 240 each, rows of 336 (each followed by its own first 16 pixels again). They are
     # read only when the option is on and a level needs one - into the area B ring, like the levels (OJ1nn.PAK, nn = picture).
-    nback = len(back)
+    # REV6: none - every level's GENLVL.BIN carries its background (plane B)
+    nback = 0
     back_packs = []
-    for px, cols, bw, bh in back:
+    for px, cols, bw, bh in back[:0]:
         rows = b"".join(px[y * bw:(y + 1) * bw] + px[y * bw:y * bw + TILE] for y in range(bh))
         # REV3: GENBG.BIN - the same picture for the Genesis' plane B (tools/stx_genesis.py)
         genbg = stx_genesis.genesis_background(px, cols, bw, bh)
@@ -381,7 +382,7 @@ def main():
     def back_of(li):
         lv = rd("L%03d.BIN" % li)
         bgi, bspeed = struct.unpack(">H", lv[8:10])[0], struct.unpack(">H", lv[30:32])[0]
-        return 0 if bgi == 0xFFFF else (bgi + 1) | (0x80 if bspeed != 100 else 0)
+        return 0                       # REV6: no picture packs
     level_backs = [back_of(li) for li in range(nlevels)]
 
     def homes_bin():
