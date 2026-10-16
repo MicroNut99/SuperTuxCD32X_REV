@@ -1,5 +1,5 @@
 #!/bin/bash
-# SuperTux CD32X REV - builds the REV10 disc: the whole of SuperTux 0.1.3 (Icyisland's 26 levels,
+# SuperTux CD32X REV - builds the REV10b disc: the whole of SuperTux 0.1.3 (Icyisland's 26 levels,
 # both Bonus Islands, the title with its demo, world maps, bad guys, power-ups, saves), half size,
 # sharpened. REV is the rip and rebuild of R11's drawing (README.md). REV2 adds the Genesis
 # picture commands to the Sub-CPU / 68000 programs (tools/check_boot.py knows the exact blocks)
@@ -37,7 +37,7 @@ SRC="${SUPERTUX:-$HERE/SuperTux-0.1.3}"
 OUT="$HERE/build"
 ROMS="$HERE/cd32x/subcpu/ROMS"
 MARKER="SH2-OPENLARA-CD-OL1-LOADER"
-DISC=SuperTuxREV10
+DISC=SuperTuxREV10b
 mkdir -p "$OUT" "$ROMS"
 
 echo "==> boot path check (must be Hurrican CD32X's, unchanged)"

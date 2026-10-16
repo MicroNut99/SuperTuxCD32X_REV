@@ -75,7 +75,7 @@ In return the levels scroll smoothly with no hitch, and the SH2s are free for th
 ## REV rounds
 | Round | What was ripped out and what replaced it |
 |---|---|
-| REV10 | **The exit igloo and the other big pictures** (`docs/REV10_NOTES.md`): SuperTux draws some tiles far bigger than a cell (the exit igloo, a tree, Nolok's statues); since R1 only their top-left corner showed. They are now cut into pieces over the cells they cover. Slower credits; the title's demo uses small Tux again, as SuperTux does. |
+| REV10 | **The exit igloo and the other big pictures** (`docs/REV10_NOTES.md`): SuperTux draws some tiles far bigger than a cell (the exit igloo, a tree, Nolok's statues); since R1 only their top-left corner showed. They are now cut into pieces over the cells they cover. Slower credits; the title's demo uses small Tux again, as SuperTux does. REV10b: the story crawl slower too (a little slower than the credits). |
 | REV9 | **The sky without bands, 4 palettes for the level** (`docs/REV9_NOTES.md`): each sky line mixes the two nearest 15-bit colours in a 4 × 4 ordered pattern, so the gradient has no visible steps; the Genesis palette the old sky used now goes to the level's tiles (4 × 15 colours). |
 | REV8 | **The sky is the 32X's** (`docs/REV8_NOTES.md`): the Genesis sky (one 15-colour palette, scaled, dithered) is switched off; each level gets a 64-shade 15-bit gradient sky drawn by the 32X behind the Genesis level, as Sonic32X does - SuperTux's own colours for the gradient levels, the picture's own colours for the others. |
 | REV7 | **REV6's black screen fixed** (`docs/REV7_NOTES.md`): the 32X was set to sit *behind* the Genesis (the 32X's priority bit, as the game always had it), so the level planes were covered by black and the sprites hidden behind them. The 32X now goes in front while a level is on the Genesis, as the 32X hardware manual describes. |
@@ -93,7 +93,7 @@ REV2 starts the rebuild: the commands the Genesis planes need, tested for bootin
 
 SuperTux 0.1.3 ("Milestone 1", 2004 – the classic platformer with Tux) on the **Sega CD32X**,
 drawn with Victor Luchits' **YATSSD** tile renderer on the boot, cart and Sub-CPU layers of the
-Hurrican CD32X port. **Version REV10 (from R11).** The whole game runs from one CD: the title with its demo
+Hurrican CD32X port. **Version REV10b (from R11).** The whole game runs from one CD: the title with its demo
 level, Icyisland and both Bonus Islands with their world maps, all 76 levels, every bad guy and
 power-up, CD music, PCM sound effects, saving and high scores. The levels are kept in a 4 MB RAM
 cart once they have been read from the disc.
@@ -136,7 +136,7 @@ libxmp-lite), and so are the sound effects, the pictures and the splash.
 1. The first run fetches SuperTux 0.1.3.
 2. The build converts the data, makes the splash, the sound effects and the CD tracks, checks
    the game on the PC (`host/`), builds the SH2 program, the loader and the Sub-CPU side.
-3. **REV10: `cd32x/subcpu/SuperTuxREV10.cue`** - no boot stack changes since REV4 (which booted), so run it in Fusion as usual, then burn it (with its `.bin`). It has the data track and the 12
+3. **REV10b: `cd32x/subcpu/SuperTuxREV10b.cue`** - no boot stack changes since REV4 (which booted), so run it in Fusion as usual, then burn it (with its `.bin`). It has the data track and the 12
    music tracks.
 
 `DATA_ONLY=1 ./build.sh` stops after the data and the PC check (no Sega toolchain needed).

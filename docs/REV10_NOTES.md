@@ -18,7 +18,10 @@ tile's rules (solid, coin ...). Empty pieces are left out. The Genesis level dat
 overlay drawing and the rules all use them like any tile.
 
 **The credits** scrolled at 60 pixels a second - too fast to read on the console. Now 25
-(`game/menus.c text_page`; up / down still scroll by hand). The story page is unchanged.
+(`game/menus.c text_page`; up / down still scroll by hand).
+
+**REV10b - the story** (the intro before a new game and in Options, and the end-of-world texts)
+scrolled at 50 pixels a second; now 19, a little slower than the credits.
 
 **The title's demo** used the Tux of the last game played (big or fire Tux), jumping into the
 blocks over the start all the time - on the console it looked like Tux jittering. SuperTux's own
