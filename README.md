@@ -24,8 +24,8 @@
 **What this release is:** SuperTux 0.1.3 on the Sega CD32X, rebuilt the Sonic CD way: every
 level is drawn by the Genesis video chip from Genesis tiles, the 32X draws only what moves and
 the sky. It runs on real hardware (Sega CD + 32X + 4 MB RAM cart) with the whole game: all 76
-levels, both Bonus Islands, CD music, saves in the RAM cart (REV5 - still to be confirmed on the
-console). On the console it is clearly smoother than R11, with no hitch when the view scrolls.
+levels, both Bonus Islands, CD music, saves in the RAM cart (REV5 - confirmed working on the
+console, 16 Oct 2026). On the console it is clearly smoother than R11, with no hitch when the view scrolls.
 The method is described in detail below.
 
 **Not yet done: profiling.** No frame-rate numbers have been measured on the console since the
@@ -40,8 +40,7 @@ and what is still to measure:
   game's rules; `W` time left waiting for the refresh; `T` and `N` should be near 0.
 - Expected hot spots: many bad guys / snow on screen (S); coin and water animations uploading
   tiles (H); the title screen, which clears the whole 32X layer every frame under the menu.
-- Also to confirm on the console: saving and loading (REV5's cart save area, survives
-  power-off); the exit igloo, the big tree (Bonus Island 2, level 19), Nolok's statues; the
+- Also to confirm on the console: the exit igloo, the big tree (Bonus Island 2, level 19), Nolok's statues; the
   demo with small Tux; the slower credits and story.
 
 ## Why the Sonic CD method ("rip and tear") is faster
