@@ -289,7 +289,7 @@ void text_page(const char *file, int pic, int credits)
 		uint16_t hit;
 		pad_read(&hit);
 		const int steps = step_clock();
-		page_pos -= steps * (credits ? 10 : 8);   /* SCROLL_SPEED_CREDITS 1.2 / _MESSAGE 1.0: 60 / 50 pixels a second */
+		page_pos -= steps * (credits ? 4 : 8);   /* SCROLL_SPEED_MESSAGE 1.0: 50 pixels a second; REV9b: the credits slowed to 25 (was 60 - too fast to read on the console) */
 		if (hit & PAD_UP) page_pos += 16 * 40;
 		if (hit & PAD_DOWN) page_pos -= 16 * 40;
 		if (credits && (hit & (PAD_LEFT | PAD_RIGHT)))

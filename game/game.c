@@ -1248,6 +1248,8 @@ void demo_start(void)
 {
 	session_level = DEMO_LEVEL;
 	const PlayerStatus keep = ps;
+	ps.bonus = 0;                      /* REV10: small Tux, as SuperTux's title (player_status.reset) -
+	                                    * not the big / fire Tux of the last game */
 	level_read(DEMO_LEVEL);            /* R3: always in the cart (IMAGE8.RAW's DEMO.PAK) */
 	world_start(-1);
 	ps = keep;
@@ -1260,6 +1262,7 @@ void demo_start(void)
 void demo_run(void)
 {
 	const PlayerStatus keep = ps;      /* the demo's coins and lives are not the player's */
+	ps.bonus = 0;                      /* REV10: back to the start as small Tux too */
 	const int steps = step_clock();
 	for (int s = 0; s < steps; s++)
 	{

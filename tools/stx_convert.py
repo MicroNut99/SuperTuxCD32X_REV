@@ -230,6 +230,75 @@ def padded(idx):
     return p
 
 
+MAX_TILES = 512                        # game/res.c tdesc[]
+
+
+class BigTiles:
+    """REV9b: SuperTux draws a tile's picture at its full size from the tile's cell (the exit
+    igloo is 113 x 96 at half size, the tree 128 x 192, Nolok's statues 16 x 48 ...); R1-REV9 cut
+    every tile to one cell, so only their top-left corners showed. Here each such picture is cut
+    into cell-sized pieces that go into the cells it covers, as new tiles. A covered cell that
+    already has a tile in that layer gets a new tile with both: the pieces under it (SuperTux
+    draws the layer row by row, so the cell's own tile, drawn later, is on top), with that tile's
+    rules (solid, coin ...). Pieces that are empty are left out."""
+
+    def __init__(self, big, tile_px, tdesc):
+        self.big, self.px, self.desc, self.made = big, tile_px, tdesc, {}
+
+    def frames(self, tid):
+        f, n = self.desc[tid][0], self.desc[tid][1]
+        return self.px[f:f + n]
+
+    def piece(self, t, i, j):
+        out = []
+        for a in self.big[t]:
+            fr = np.zeros((TILE, TILE), np.uint8)
+            c = a[j * TILE:(j + 1) * TILE, i * TILE:(i + 1) * TILE]
+            fr[:c.shape[0], :c.shape[1]] = c
+            out.append(fr)
+        return out if any(fr.any() for fr in out) else None
+
+    def tile(self, pieces, under):
+        """a new tile: the pieces (draw order) with the cell's own tile `under` (0: none) on top"""
+        key = (tuple(pieces), int(under))
+        if key in self.made:
+            return self.made[key]
+        stack = [self.piece(*p) for p in pieces] + ([self.frames(under)] if under and self.desc[under][1] else [])
+        n = max(len(x) for x in stack)
+        frames = []
+        for k in range(n):
+            fr = np.zeros((TILE, TILE), np.uint8)
+            for x in stack:
+                f = x[k % len(x)]
+                fr[f != 0] = f[f != 0]
+            frames.append(fr)
+        d = self.desc[under] if under else (0, 0, 0, 0, 0, 0)
+        speed = d[2] if under and self.desc[under][1] > 1 else self.desc[pieces[0][0]][2]
+        first = len(self.px)
+        self.px.extend(frames)
+        self.desc.append((first, n, speed, d[3], d[4], d[5]))
+        self.made[key] = len(self.desc) - 1
+        return self.made[key]
+
+    def layer(self, L):
+        H, W = L.shape
+        cover = {}                     # (y, x) -> pieces in draw order
+        for y in range(H):
+            for x in range(W):
+                t = int(L[y, x])
+                if t not in self.big:
+                    continue
+                h, w = self.big[t][0].shape
+                for j in range((h + TILE - 2) // TILE):
+                    for i in range((w + TILE - 2) // TILE):
+                        if (i or j) and y + j < H and x + i < W and self.piece(t, i, j) is not None:
+                            cover.setdefault((y + j, x + i), []).append((t, i, j))
+        out = L.copy()
+        for (y, x), pcs in cover.items():
+            out[y, x] = self.tile(pcs, int(L[y, x]))
+        return out
+
+
 def main():
     if len(sys.argv) < 3:
         sys.exit(__doc__)
@@ -284,6 +353,7 @@ def main():
     pal = Palette([a for v in raw_tiles.values() for a in v] + [a for v in sprite_arrs for a in v])
     ntiles = max(tiles) + 1
     tile_px, tdesc = [], []
+    big = {}                           # REV9b: tiles whose picture is bigger than a cell (full frames)
     for tid in range(ntiles):
         t = tiles.get(tid)
         first = len(tile_px)
@@ -292,14 +362,12 @@ def main():
             ia = pal.index(a)
             fr[:min(TILE, ia.shape[0]), :min(TILE, ia.shape[1])] = ia[:TILE, :TILE]
             tile_px.append(fr)
+            if ia.shape[0] > TILE + 1 or ia.shape[1] > TILE + 1:
+                big.setdefault(tid, []).append(ia)
         tdesc.append((first, len(tile_px) - first, t["speed"] if t else 0, t["flags"] if t else 0,
                       t["data"] if t else 0, t["next"] if t else 0))
-    with open(os.path.join(outdir, "TILES.BIN"), "wb") as f:
-        f.write(b"STXT" + struct.pack(">HH", len(tile_px), ntiles))
-        for d in tdesc:
-            f.write(struct.pack(">HHHHHH", *d))
-        for fr in tile_px:
-            f.write(fr.tobytes())
+    big = {k: v for k, v in big.items() if len(v) == len(raw_tiles[k])}
+    spread = BigTiles(big, tile_px, tdesc)
     with open(os.path.join(outdir, "PALETTE.BIN"), "wb") as f:
         f.write(struct.pack(">H", 0x0400) + pal.words(GLOBAL_COLOURS))   # entries 0 (unused) and 1-191
     spr_saved = write_sprites(outdir, pal, sprite_defs, sprite_arrs)
@@ -358,6 +426,7 @@ def main():
             v = [int(x) for x in e[1:]] if e else []
             v = (v + [0] * (W * H))[:W * H]
             layers.append(np.array(v, dtype=np.uint16).reshape(H, W))
+        layers = [spread.layer(l) for l in layers]       # REV9b: big pictures over their cells
         bg = val(lv, "background", "")
         bgi = back_index.get(bg, 0xFFFF) if bg else 0xFFFF
         top = c555(num(lv, "bkgd_red_top"), num(lv, "bkgd_green_top"), num(lv, "bkgd_blue_top"))
@@ -407,6 +476,18 @@ def main():
     rep.append("music used by levels: " + ", ".join("%s -> track %d" % (m or "(none)", t)
                for m, t in sorted(music_used.items(), key=lambda x: x[1])))
     rep.append("objects: " + ", ".join("%s %d" % kv for kv in sorted(kinds_seen.items(), key=lambda x: -x[1])))
+
+    # ---- TILES.BIN: after the levels - REV9b's pieces of big pictures are tiles too ----
+    if len(tdesc) > MAX_TILES:
+        sys.exit("*** %d tiles, more than the game's %d (game/res.c)" % (len(tdesc), MAX_TILES))
+    with open(os.path.join(outdir, "TILES.BIN"), "wb") as f:
+        f.write(b"STXT" + struct.pack(">HH", len(tile_px), len(tdesc)))
+        for d in tdesc:
+            f.write(struct.pack(">HHHHHH", *d))
+        for fr in tile_px:
+            f.write(fr.tobytes())
+    rep.append("big pictures (exit igloo, tree, statues ...) spread over their cells: %d new tiles, %d in all"
+               % (len(tdesc) - ntiles, len(tdesc)))
 
     # ---- the world maps ----
     write_worldmaps(D, outdir, level_index, rep)
