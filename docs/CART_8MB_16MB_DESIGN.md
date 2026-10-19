@@ -5,6 +5,14 @@ or tested; its GreenPAK image is not public. No OpenJazz 8 / 16 MB build exists 
 build notes, Addendum 2 and the OpenJazz repo describe the 4 MB cart only. This design uses
 what IS proven on the 4 MB cart (Jazz / SuperTux REV10b) and the board's documented paging.
 
+**Rule (19 Oct 2026): the boot stack is not edited - existing commands only.** No existing
+command writes the board's page registers (0xA130F0 / F2): every handler in
+`cd32x/subcpu/main.c` writes only fixed 32X registers (0xA151xx) or, for 46 / 61, inside the
+4 MB cart window. So sections 3-5 (paging, commands 68 / 69) are ON HOLD. What works with
+existing commands, as OpenJazz does on its 4 MB cart, is sections 6 and 7 (keep what was
+copied in across power-off, smaller packs), and on the board the game runs as on a 4 MB cart
+(power-on pages 0 / 1).
+
 ## 1. What the board gives us (16MB-PCB-CD32X README §2, §7, §10, §12)
 - The console still sees a **4 MB cart window**, split into **two 2 MB windows**:
   window 0 = cart offset 0x000000-0x1FFFFF, window 1 = 0x200000-0x3FFFFF.
