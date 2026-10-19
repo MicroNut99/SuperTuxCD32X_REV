@@ -67,6 +67,45 @@ void plat_init(void)
 
 const uint8_t *plat_cart_ptr(uint32_t off) { return cart + off; }
 
+/* 8 / 16 MB test builds (game/cart.c): the 16MB-PCB-CD32X's window 1 on the PC. ST_CARTMB = 4
+ * (no mapper: the page writes go nowhere), 8 (the 8 MB GreenPAK image: pages 4-7 are 0-3
+ * again) or 16. The cart buffer is what the console sees; window 1's 2 MB are copied out to the
+ * page they belong to and in from the new one. Saves / the probe: commands 58 + 61 into window
+ * 1's 0x3F0000 + piece x 4 KB, as the Sub-CPU does them. */
+#include "cart.h"
+#if STX_CART_MB > 4
+static uint8_t *pages[8];
+static int host_page = 1;
+int plat_cart_page(int page)
+{
+	const int mb = atoi(env("ST_CARTMB", "4"));
+	if (page < 1 || page > 7) return 0;
+	if (mb <= 4) return 1;                         /* no register: the write goes nowhere */
+	const int phys = mb == 8 ? page & 3 : page;
+	const int old = mb == 8 ? host_page & 3 : host_page;
+	if (phys == old) { host_page = page; return 1; }
+	for (int i = 0; i < 8; i++) if (!pages[i]) pages[i] = calloc(1, 0x200000);
+	memcpy(pages[old], cart + 0x200000, 0x200000);
+	memcpy(cart + 0x200000, pages[phys], 0x200000);
+	host_page = page;
+	if (getenv("ST_LOG")) fprintf(stderr, "[%u] cart window 1 -> page %d\n", frame, page);
+	return 1;
+}
+const volatile uint8_t *plat_cart_through(uint32_t off) { return cart + off; }
+static uint8_t save_buf[4096];
+int plat_save_put_word(int index, int value)
+{
+	index &= 2047;
+	save_buf[2 * index] = (uint8_t)(value >> 8); save_buf[2 * index + 1] = (uint8_t)value;
+	return 1;
+}
+int plat_save_piece(int piece)
+{
+	memcpy(cart + 0x3F0000 + (uint32_t)(piece & 15) * 4096u, save_buf, 4096);
+	return 1;
+}
+#endif
+
 int32_t plat_load_pack(int id, uint32_t off, uint32_t max)
 {
 	char name[32];

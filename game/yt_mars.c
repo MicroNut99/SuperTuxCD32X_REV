@@ -204,6 +204,23 @@ int cart_load(int fid, uint32_t flen, int first, int n, void (*progress)(int don
 	return !bad;
 }
 
+/* ---- 8 / 16 MB test builds (game/cart.c): command 68, window 1's page (cd32x/subcpu/main.c,
+ * compiled into the Sub-CPU program only for these builds). Then both SH2s purge their caches:
+ * the slave through the platform's parallel job (port/plat_mars.c plat_parallel). */
+#include "cart.h"
+#if STX_CART_MB > 4
+static void purge_cache(void *arg, int cpu) { (void)arg; (void)cpu; *(volatile uint8_t *)0xFFFFFE92 = 0x11; }
+int plat_cart_page(int page)
+{
+	C_COMM2 = (uint16_t)page;
+	C_COMM12 = 0;
+	const int ok = c_cmd(68) && C_COMM12 == 1;
+	plat_parallel(purge_cache, 0);
+	return ok;
+}
+const volatile uint8_t *plat_cart_through(uint32_t off) { return (const volatile uint8_t *)(0x22000000u + off); }
+#endif
+
 /* ---- REV3: the Genesis picture, SH2 commands 62-66 (cd32x/subcpu/main.c REV2, boot-proven on
  * the console; docs repo CD32X_COMMAND_LEDGER_ADDITIONS.md). Parameters in COMM2 / COMM8 before
  * COMM0, done = COMM0 cleared (c_cmd above); cart sources as offsets into the 4 MB cart. */
