@@ -25,6 +25,7 @@
  * On the PC: ST_DIR/STXSAVE.BIN.
  */
 #include "stx.h"
+#include "cart.h"
 
 /* ------------------------------------------------------------------ saves */
 #define HS_N 10
@@ -119,9 +120,17 @@ void save_store(void)
 {
 	static uint8_t b[SAVE_BYTES];
 	save_pack(b);
-	for (int i = 0; i < SAVE_BYTES / 2; i++)
-		if (!plat_save_put_word(i, b[2 * i] << 8 | b[2 * i + 1])) return;
-	plat_save_piece(SAVE_PIECE);
+#if STX_CART_MB > 4
+	const int keep_page = cart_page_now();
+	cart_page(1);                      /* 8 / 16 MB: the saves are in page 1 (cart 0x3F0000) */
+#endif
+	int ok = 1;
+	for (int i = 0; i < SAVE_BYTES / 2 && ok; i++)
+		if (!plat_save_put_word(i, b[2 * i] << 8 | b[2 * i + 1])) ok = 0;
+	if (ok) plat_save_piece(SAVE_PIECE);   /* a word that did not arrive: no half-written save */
+#if STX_CART_MB > 4
+	cart_page(keep_page);              /* back to the level's page, if one is being played */
+#endif
 }
 #else
 static void save_path(char *p, size_t n) { snprintf(p, n, "%s/STXSAVE.BIN", getenv("ST_DIR") ? getenv("ST_DIR") : "."); }
@@ -427,7 +436,7 @@ static int options_played;            /* R11: a level was played from OPTIONS - 
 
 void options_page(BgFn bg)
 {
-	enum { O_MUSIC, O_LIVES, O_TIMING, O_BUTTONS, O_BACKGROUND, O_MOTION, O_SCROLL, O_DRAW, O_LEVELS, O_CONTROLS, O_STORY, O_SCORES, O_CREDITS, O_BACK, O_N };
+	enum { O_MUSIC, O_LIVES, O_TIMING, O_BUTTONS, O_BACKGROUND, O_MOTION, O_SCROLL, O_DRAW, O_LEVELS, O_CONTROLS, O_STORY, O_SCORES, O_CREDITS, O_CART, O_BACK, O_N };
 	int sel = 0;
 	static char rows[O_N][32];
 	static const char *items[O_N];
@@ -453,6 +462,7 @@ void options_page(BgFn bg)
 		put_str(rows[O_STORY], "STORY");
 		put_str(rows[O_SCORES], "HIGH SCORES");
 		put_str(rows[O_CREDITS], "CREDITS");
+		put_str(rows[O_CART], "CART TEST");            /* 8 / 16 MB test builds only (game/cart.c) */
 		put_str(rows[O_BACK], "BACK");
 		/* R11: LEVEL SELECT only from the title (from a level's pause or the world map it would
 		 * start a level inside another one) */
@@ -462,6 +472,7 @@ void options_page(BgFn bg)
 		{
 			if (i == O_LEVELS && !from_title) continue;
 			if (i == O_BACKGROUND || i == O_DRAW) continue;   /* REV6: the levels are Genesis tiles - no switch */
+			if (i == O_CART && (STX_CART_MB <= 4 || !from_title)) continue;   /* it moves window 1: not inside a level */
 			if (i == sel) at = ns;
 			shown[ns] = i;
 			items[ns++] = rows[i];
@@ -484,6 +495,21 @@ void options_page(BgFn bg)
 		case O_BUTTONS: opt_swap ^= 1; break;
 		case O_BACKGROUND: opt_parallax = (opt_parallax + (d > 0 ? 1 : 2)) % 3; break;   /* from the next level read on */
 		case O_MOTION: opt_smooth ^= 1; break;
+#if STX_CART_MB > 4
+		case O_CART:
+		{
+			/* 8 / 16 MB test builds: the cart's size, each page written and read back, the
+			 * saves on page 1 untouched (game/cart.c cart_test) */
+			static char lines[10][32];
+			static const char *items_t[10];
+			message_screen(bg, "CART TEST", "WRITING AND READING EACH PAGE...", "", 200, 200);
+			const int n = cart_test(lines, 10);
+			for (int i = 0; i < n; i++) items_t[i] = lines[i];
+			list_style();
+			menu_choose("CART TEST", items_t, n, 0, bg, "B BACK");
+			break;
+		}
+#endif
 		case O_SCROLL: opt_ring ^= 1; yt_set_ring(opt_ring); break;
 		case O_LEVELS:
 		{
@@ -640,6 +666,9 @@ int main(int argc, char *argv[])
 	plat_init();
 	res_load();
 	save_load();
+#if STX_CART_MB > 4
+	cart_probe();                      /* 8 / 16 MB test builds: 4, 8 or 16 MB (game/cart.c) */
+#endif
 	plat_border_colour(0);
 	ps_reset();
 #ifndef OJ32X_MARS
@@ -662,7 +691,13 @@ int main(int argc, char *argv[])
 		{
 			static const char *const items[] = { "START GAME", "BONUS LEVELS", "OPTIONS", "CREDITS", "HIGH SCORES" };
 			title_style();
+#if STX_CART_MB > 4
+			static char hint[40];          /* 8 / 16 MB test builds: what the probe found, on the title */
+			put_str(put_dec(put_str(hint, "SUPERTUX 0.1.3 - 32X - CART "), (uint32_t)cart_mb, 1), " MB");
+			const int c = menu_choose(0, items, 5, sel, bg_title, hint);
+#else
 			const int c = menu_choose(0, items, 5, sel, bg_title, "SUPERTUX 0.1.3 - SEGA CD 32X");
+#endif
 			list_style();
 			if (c < 0) continue;
 			sel = c;

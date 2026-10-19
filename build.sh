@@ -38,6 +38,20 @@ OUT="$HERE/build"
 ROMS="$HERE/cd32x/subcpu/ROMS"
 MARKER="SH2-OPENLARA-CD-OL1-LOADER"
 DISC=SuperTuxREV10b
+# 8 / 16 MB TEST BUILDS (16MB-PCB-CD32X, docs/CART_8MB_16MB_DESIGN.md): CART_MB=8 or 16 ./build.sh
+#   - the Sub-CPU program gets command 68 (window 1's page register; docs repo
+#     CD32X_CART_PAGING_PROPOSAL.md) - compiled ONLY in these builds (STX_CART_PAGED);
+#   - the game probes the cart (4 / 8 / 16 MB, shown on the title), keeps levels in pages 2-7,
+#     trusts a level already in the cart only by its sum (SUMS.BIN), Options -> CART TEST;
+#   - the disc is SuperTuxREV10b_8MB / _16MB. Without CART_MB: the normal 4 MB build, unchanged.
+CART_MB=${CART_MB:-4}
+case "$CART_MB" in
+  4)    PACK_ARGS=""; ENGINE_DEFS=""; SUB_CCFLAGS="" ;;
+  8|16) PACK_ARGS="--cart-mb $CART_MB"; ENGINE_DEFS="-DSTX_CART_MB=$CART_MB"
+        SUB_CCFLAGS="-m68000 -Wall -Ofast -c -fomit-frame-pointer -DSTX_CART_PAGED=1"
+        DISC=${DISC}_${CART_MB}MB ;;
+  *)    echo "*** CART_MB is 4, 8 or 16 - stopping"; exit 1 ;;
+esac
 mkdir -p "$OUT" "$ROMS"
 
 echo "==> boot path check (must be Hurrican CD32X's, unchanged)"
@@ -56,25 +70,25 @@ echo "==> splash";      python3 "$HERE/tools/make_stx_splash.py" "$SRC/data" "$O
                         python3 "$HERE/tools/make_boot_image.py" "$OUT/Splash.png" "$ROMS/IMAGE.RAW"
                         python3 "$HERE/tools/splash_bar_colours.py" "$ROMS/IMAGE.RAW"
 echo "==> data packs";  rm -f "$ROMS"/IMAGE8.RAW "$ROMS"/IMAGE9.RAW "$ROMS"/OJ*.PAK "$ROMS"/SFX*.BIN
-                        python3 "$HERE/tools/stx_pack.py" "$OUT/data" "$ROMS"
+                        python3 "$HERE/tools/stx_pack.py" $PACK_ARGS "$OUT/data" "$ROMS"
 # (stx_pack.py itself stops if IMAGE8.RAW would run into the level areas)
 echo "==> sound effects"; python3 "$HERE/tools/make_stx_sfx.py" "$SRC/data" "$ROMS/SFX00.BIN"
 echo "==> music (CD audio tracks 2-13)"
                         "$HERE/tools/stx_music.sh" "$SRC" "$OUT/music"
 
 echo "==> PC check (game/ on the PC: level 1, 300 frames, frames in build/host_frames)"
-                        make -C "$HERE/host" > /dev/null
+                        make -B -C "$HERE/host" EXTRA="$ENGINE_DEFS" > /dev/null
                         rm -rf "$OUT/host_frames"; mkdir -p "$OUT/host_frames"
-                        ST_LEVEL=0 ST_DIR="$ROMS" ST_OUT="$OUT/host_frames" ST_FRAMES=300 ST_SAVE_EVERY=30 \
+                        ST_CARTMB=$CART_MB ST_LEVEL=0 ST_DIR="$ROMS" ST_OUT="$OUT/host_frames" ST_FRAMES=300 ST_SAVE_EVERY=30 \
                           ST_PAD="0:-,10:RIGHT,60:RIGHT+C,80:RIGHT,140:RIGHT+B,170:RIGHT+B+C,190:RIGHT+B" "$HERE/host/stx_host"
 [ "${DATA_ONLY:-0}" = 1 ] && { echo "==> DATA_ONLY=1: stopping before the console build"; exit 0; }
 
 echo "==> engine";      rm -rf "$HERE/mars/obj"     # the switches are compiled into port/plat_mars.c
-                        make -C "$HERE/mars" EXTRA_DEFS="-DOJ32X_MUSIC=1"
+                        make -C "$HERE/mars" EXTRA_DEFS="-DOJ32X_MUSIC=1 $ENGINE_DEFS"
 [ -f "$HERE/mars/OPENJAZZ.32X" ] || { echo "*** mars/OPENJAZZ.32X was not made - stopping"; exit 1; }
 echo "==> ROM check";   python3 "$HERE/cd32x/ref/openlara/tools/prep_openlara_cd.py" "$HERE/mars/OPENJAZZ.32X" "$ROMS/OPENLARA.32X"
 echo "==> SH2 loader";  cd "$HERE/cd32x/sh2"    && make -f Makefile.cdloader clean && make -f Makefile.cdloader
-echo "==> Sub-CPU";     cd "$HERE/cd32x/subcpu" && make clean && make cd
+echo "==> Sub-CPU";     cd "$HERE/cd32x/subcpu" && make clean && if [ -n "$SUB_CCFLAGS" ]; then make cd CCFLAGS="$SUB_CCFLAGS"; else make cd; fi
 
 ISO="$HERE/cd32x/subcpu/CDROMPlayer.iso"
 [ -f "$ISO" ] || { echo "*** $ISO was not made - stopping"; exit 1; }

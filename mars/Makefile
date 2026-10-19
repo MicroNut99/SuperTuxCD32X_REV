@@ -54,7 +54,7 @@ YT_CFLAGS   := -std=gnu11 $(ARCH) -Os -fomit-frame-pointer -ffast-math -funroll-
                -D__32X__ -DMARS -I$(YT) -w -MMD -MP
 
 PORT_OBJS := $(OBJDIR)/plat_mars.o $(OBJDIR)/mars_syscalls.o $(OBJDIR)/pack.o $(OBJDIR)/mars_boottest.o
-GAME_OBJS := $(addprefix $(OBJDIR)/,res.o level.o tux.o objects.o game.o wmap.o menus.o yt_layers.o yt_mars.o gen_level.o)
+GAME_OBJS := $(addprefix $(OBJDIR)/,res.o level.o tux.o objects.o game.o wmap.o menus.o yt_layers.o yt_mars.o gen_level.o cart.o)
 YT_OBJS   := $(OBJDIR)/dtiles.o $(OBJDIR)/dsprite.o $(OBJDIR)/draw.o $(OBJDIR)/font.o $(OBJDIR)/sh2_fixed.o
 OBJS := $(GAME_OBJS) $(YT_OBJS) $(PORT_OBJS)
 LD_SCRIPT := $(PORT)/mars/oj.ld

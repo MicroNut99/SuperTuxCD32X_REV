@@ -7,8 +7,8 @@
 # make -C host asan: the same with the address and undefined-behaviour checkers (not shift-base:
 # the game shifts negative fixed-point values left, which GCC defines - its manual, "Integers").
 CC     ?= gcc
-CFLAGS := -std=gnu11 -O2 -g -Wall -Wextra -Wno-unused-parameter -I../port -I../yatssd -I../game -DOJ32X
-SRC    := ../game/gen_level.c ../game/res.c ../game/level.c ../game/tux.c ../game/objects.c ../game/game.c ../game/wmap.c ../game/menus.c ../game/yt_layers.c ../game/yt_host.c ../game/host.c ../port/pack.c ../yatssd/font.c
+CFLAGS := -std=gnu11 -O2 -g -Wall -Wextra -Wno-unused-parameter -I../port -I../yatssd -I../game -DOJ32X $(EXTRA)
+SRC    := ../game/gen_level.c ../game/cart.c ../game/res.c ../game/level.c ../game/tux.c ../game/objects.c ../game/game.c ../game/wmap.c ../game/menus.c ../game/yt_layers.c ../game/yt_host.c ../game/host.c ../port/pack.c ../yatssd/font.c
 DEPS   := $(wildcard ../game/*.h) ../port/pack.h ../port/plat.h ../yatssd/types.h
 all: stx_host
 stx_host: $(SRC) $(DEPS)

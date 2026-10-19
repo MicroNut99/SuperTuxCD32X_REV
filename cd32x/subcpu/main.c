@@ -943,6 +943,27 @@ int main(void)
             do_md_cmd2(MD_CMD_WRITE_32X_16, 0xA1512C, ok);
             do_md_cmd2(MD_CMD_WRITE_32X_16, 0xA15120, 0);
         }
+#if STX_CART_PAGED
+        /* SuperTux 8 / 16 MB TEST BUILDS ONLY (build.sh CART_MB=8|16 compiles this; the 4 MB
+           build does not) - docs repo CD32X_CART_PAGING_PROPOSAL.md, the merged form:
+             68  cart window 1 page  COMM2 = page 1-7; reply COMM12 = 1 written, 0 refused
+           The 16MB-PCB-CD32X's page register for window 1 (cart 0x200000-0x3FFFFF) is an even
+           byte at 0xA130F2, written by the 68000 only.  MD 26 safe_cart_xfer writes it: SR =
+           0x2700, RV = 1, one move.b, RV = 0 - the same /UWR cycle as every variant, interrupts
+           off.  Window 0 (the program) is never paged.  The SH2 purges its caches afterwards. */
+        else if (cmd == 68) {
+            int page = do_md_cmd1(MD_CMD_READ_32X_16, 0xA15122) & 0xFFFF;
+            int ok = page >= 1 && page <= 7;
+            if (ok) {
+                PB(0) = (uint8_t)page;
+                switch_banks();                              /* Word RAM -> 68000 */
+                cx(XM(0), 0xA130F2, 1);
+                switch_banks();
+            }
+            do_md_cmd2(MD_CMD_WRITE_32X_16, 0xA1512C, ok);
+            do_md_cmd2(MD_CMD_WRITE_32X_16, 0xA15120, 0);
+        }
+#endif
         else if (cmd == 53) {
             /* K33 - CMD 53 "load sound effects": KOBOSFX.BIN -> PCM chip.  Reply in COMM12:
                number of effects (0 = failed). */

@@ -55,11 +55,13 @@ static uint32_t read_file(const char *name, uint32_t off, uint32_t max)
 }
 
 uint8_t *host_cart(void) { return cart; }
+static uint32_t image8_len;            /* what start-up read (the console reads it at every power-on) */
 
 void plat_init(void)
 {
 	cart = calloc(1, 0x400000);
 	const uint32_t n = read_file("IMAGE8.RAW", 0x100000, 0x180000);
+	image8_len = n;
 	if (!n || !pack_mount(cart + 0x100000)) plat_fatal("no resident pack IMAGE8.RAW in ST_DIR");
 	/* the 32X's frame buffers hold the splash when the game starts: something not zero */
 	memset(fbmem, 0xA5, sizeof fbmem);
@@ -76,8 +78,30 @@ const uint8_t *plat_cart_ptr(uint32_t off) { return cart + off; }
 #if STX_CART_MB > 4
 static uint8_t *pages[8];
 static int host_page = 1;
+/* ST_CARTIMG=<file>: the battery-backed cart across "power-offs" on the PC - window 1's pages and
+ * the 4 MB the console sees are read from the file at start-up and written back at exit (the
+ * page register comes back as page 1, as the board's reset does) */
+static void cart_img_save(void);
+static void cart_img_load(void)
+{
+	const char *fn = getenv("ST_CARTIMG");
+	FILE *f = fn ? fopen(fn, "rb") : 0;
+	for (int i = 0; i < 8; i++) if (!pages[i]) pages[i] = calloc(1, 0x200000);
+	if (f)
+	{
+		static uint8_t keep8[0x180000];
+		memcpy(keep8, cart + 0x100000, image8_len);    /* IMAGE8 is read from the disc at every start */
+		if (fread(cart, 1, 0x400000, f) != 0x400000) fprintf(stderr, "HOST: short cart image\n");
+		for (int i = 0; i < 8; i++) if (fread(pages[i], 1, 0x200000, f) != 0x200000) break;
+		memcpy(cart + 0x100000, keep8, image8_len);
+		fclose(f);
+	}
+	if (fn) atexit(cart_img_save);
+}
+static int host_page_init;
 int plat_cart_page(int page)
 {
+	if (!host_page_init) { host_page_init = 1; cart_img_load(); }
 	const int mb = atoi(env("ST_CARTMB", "4"));
 	if (page < 1 || page > 7) return 0;
 	if (mb <= 4) return 1;                         /* no register: the write goes nowhere */
@@ -90,6 +114,18 @@ int plat_cart_page(int page)
 	host_page = page;
 	if (getenv("ST_LOG")) fprintf(stderr, "[%u] cart window 1 -> page %d\n", frame, page);
 	return 1;
+}
+static void cart_img_save(void)
+{
+	const char *fn = getenv("ST_CARTIMG");
+	FILE *f = fn ? fopen(fn, "wb") : 0;
+	if (!f) return;
+	plat_cart_page(1);                 /* the reset state: window 1 shows page 1 */
+	const int mb = atoi(env("ST_CARTMB", "4"));
+	if (mb > 4) memcpy(pages[1], cart + 0x200000, 0x200000);
+	fwrite(cart, 1, 0x400000, f);
+	for (int i = 0; i < 8; i++) fwrite(pages[i], 1, 0x200000, f);
+	fclose(f);
 }
 const volatile uint8_t *plat_cart_through(uint32_t off) { return cart + off; }
 static uint8_t save_buf[4096];
