@@ -13,6 +13,14 @@ existing commands, as OpenJazz does on its 4 MB cart, is sections 6 and 7 (keep 
 copied in across power-off, smaller packs), and on the board the game runs as on a 4 MB cart
 (power-on pages 0 / 1).
 
+**Update, 19 Oct 2026:** the stack change is now agreed across projects in the docs repo
+(`CD32X_SRAM_PAGING_PROPOSAL.md` variant B, `CD32X_PAGING_SONICCD.md`, SuperTux's position in
+`CD32X_CART_PAGING_PROPOSAL.md`): SH2 command 68 (window 1, page 1-7) written with the existing
+MD 26 `safe_cart_xfer` (interrupts off), no listener change, probe in save piece 15, the last
+64 KB of every page reserved (owner record). So pages 2-7 give SuperTux **1.375 MB each**
+(0x280000-0x3EFFFF): 16 MB = 8.25 + 2.35 = 10.6 MB of room (all 77 levels), 8 MB = 5.1 MB.
+Waiting for the console test of the page write before anything is built.
+
 ## 1. What the board gives us (16MB-PCB-CD32X README §2, §7, §10, §12)
 - The console still sees a **4 MB cart window**, split into **two 2 MB windows**:
   window 0 = cart offset 0x000000-0x1FFFFF, window 1 = 0x200000-0x3FFFFF.
