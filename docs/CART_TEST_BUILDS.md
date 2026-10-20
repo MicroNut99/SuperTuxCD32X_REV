@@ -56,8 +56,10 @@ than REV10b (`.data` 51328 vs 51248, `.bss` the same).
 ## Console test 2 (19 Oct 2026, 4 MB cart, `SuperTuxREV10b_16MB` rebuilt from the fix)
 Boots past the start-up check and **the game plays** (the owner's report). So the page-register
 write (command 68, sent by the start-up probe) is harmless on the 4 MB cart - as OpenLara's test
-disc found the same day (docs repo ledger). Still to note from this disc: the title's
-`CART n MB` and the CART TEST screen. A real page switch needs the 8 / 16 MB board.
+disc found the same day (docs repo ledger). **CART TEST** (owner's photo): `CART 4 MB (DISC 16 MB)`,
+`SAVES UNTOUCHED` - as expected. A real page switch needs the 8 / 16 MB board.
+**Open:** the owner reports a hang of about 2 minutes after a loading screen finishes (the CD has
+stopped), then the game goes on - being looked into.
 
 ## Checked on the PC (game/host.c models the board: ST_CARTMB=4 / 8 / 16)
 - Probe and CART TEST: 16 → pages 2-7 OK; 8 (pages 4-7 = 0-3) → pages 2-3 OK; 4 → nothing
