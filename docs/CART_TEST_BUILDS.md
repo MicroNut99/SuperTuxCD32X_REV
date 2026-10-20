@@ -53,6 +53,12 @@ are on the stack, the checksum check is in `game/cart.c` (cart code) and level.c
 helpers are in `.text.paged` (cart, not SDRAM). The 16 MB build now uses 80 bytes of SDRAM more
 than REV10b (`.data` 51328 vs 51248, `.bss` the same).
 
+## Console test 2 (19 Oct 2026, 4 MB cart, `SuperTuxREV10b_16MB` rebuilt from the fix)
+Boots past the start-up check and **the game plays** (the owner's report). So the page-register
+write (command 68, sent by the start-up probe) is harmless on the 4 MB cart - as OpenLara's test
+disc found the same day (docs repo ledger). Still to note from this disc: the title's
+`CART n MB` and the CART TEST screen. A real page switch needs the 8 / 16 MB board.
+
 ## Checked on the PC (game/host.c models the board: ST_CARTMB=4 / 8 / 16)
 - Probe and CART TEST: 16 → pages 2-7 OK; 8 (pages 4-7 = 0-3) → pages 2-3 OK; 4 → nothing
   paged; saves untouched in all three.
