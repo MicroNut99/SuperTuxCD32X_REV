@@ -22,9 +22,8 @@ The switch sets, for these builds only:
   and 6 (commands 68 + 58 + 61), read back. The title's panel shows **`CART 4 / 8 / 16 MB`**.
   This is the first page-register write the console sees: on the 4 MB cart it tests whether the
   cart ignores 0xA130F2.
-- **Options → CART TEST** (from the title only): the probe again, then a 4 KB pattern written to
-  piece 15 of every page and read back by the SH2 (`PAGE n OK / READ BACK BAD / WRITE FAILED`),
-  then page 1 again and **`SAVES UNTOUCHED`** (piece 13 compared before / after).
+- *(Options → CART TEST was removed on 20 Oct 2026 at the owner's request; the title's
+  `CART n MB` is the check.)*
 - **Levels** (16 MB): 61 levels in pages 2-7 and 9 in page 1 - every level has its own place.
   8 MB: 20 levels in pages 2-3, the other 50 share page 1's ring as on the 4 MB cart. A level is
   read from the disc once; after that (also after power-off: the cart is battery-backed) it is
@@ -35,11 +34,11 @@ The switch sets, for these builds only:
   to page 1 and back); after each page change both SH2s purge their caches.
 
 ## Order of the tests
-1. **4 MB cart, `SuperTuxREV10b_16MB`:** boots? Title says `CART 4 MB`? CART TEST:
-   `CART 4 MB`, `SAVES UNTOUCHED`; a level plays; saving works. If it does not boot, or the
+1. **4 MB cart, `SuperTuxREV10b_16MB`:** boots? Title says `CART 4 MB` with no stop after the
+   loading bar? A level plays; saving works. If it does not boot, or the
    title never comes, the page-register write is a show-stopper on the 4 MB cart - stop there.
-2. **8 MB board:** title `CART 8 MB`; CART TEST pages 2-3 OK.
-3. **16 MB board:** title `CART 16 MB`; CART TEST pages 2-7 OK; play levels from several worlds,
+2. **8 MB board:** title `CART 8 MB`; levels from pages 2-3 play.
+3. **16 MB board:** title `CART 16 MB`; play levels from several worlds,
    power off and on, play them again - no loading screen for a level already played.
 
 ## Console test 1 (19 Oct 2026, 4 MB cart, `SuperTuxREV10b_16MB`) - stopped before the title
@@ -54,15 +53,28 @@ helpers are in `.text.paged` (cart, not SDRAM). The 16 MB build now uses 80 byte
 than REV10b (`.data` 51328 vs 51248, `.bss` the same).
 
 ## Console test 2 (19 Oct 2026, 4 MB cart, `SuperTuxREV10b_16MB` rebuilt from the fix)
-Boots past the start-up check and **the game plays** (the owner's report). So the page-register
-write (command 68, sent by the start-up probe) is harmless on the 4 MB cart - as OpenLara's test
-disc found the same day (docs repo ledger). **CART TEST** (owner's photo): `CART 4 MB (DISC 16 MB)`,
-`SAVES UNTOUCHED` - as expected. A real page switch needs the 8 / 16 MB board.
-**Open:** the owner reports a hang of about 2 minutes after a loading screen finishes (the CD has
-stopped), then the game goes on - being looked into.
+Boots past the start-up check and the game plays. CART TEST (owner's photo): `CART 4 MB (DISC
+16 MB)`, `SAVES UNTOUCHED`. **But** the owner saw a stop of about 2 minutes after the power-on
+loading bar, and CART TEST took about 2 minutes too.
+
+**Cause (my build script):** `build.sh` passed `-DSTX_CART_PAGED=1` in the Sub-CPU Makefile's
+`CCFLAGS`, but `main.c` is compiled with `HWFLAGS`. So **command 68 was never in the Sub-CPU
+program** on test discs 1 and 2: the SH2 sent it, nothing answered, and the SH2 sat out its
+wait (2,000,000 x 64 loops, ~50 s each) before going on with `CART 4 MB`. **This also means
+the page register was never written on the console - test 2 did NOT show that the write is
+harmless on the 4 MB cart** (OpenLara's disc did, for its own build).
+
+**Fixed (20 Oct 2026):** `build.sh` passes the switch in `HWFLAGS` (same flags as before + the
+switch) and stops if main.c's compile line does not carry it. CART TEST removed (owner's
+request).
+
+## Console test 3 (to do: 4 MB cart, `SuperTuxREV10b_16MB` from the fix)
+The first disc that really writes 0xA130F2. Expected: no stop after the loading bar, title
+`CART 4 MB`, levels play, saves work. If it does not reach the title, the page write is a
+show-stopper on the 4 MB cart.
 
 ## Checked on the PC (game/host.c models the board: ST_CARTMB=4 / 8 / 16)
-- Probe and CART TEST: 16 → pages 2-7 OK; 8 (pages 4-7 = 0-3) → pages 2-3 OK; 4 → nothing
+- Probe (and the removed CART TEST): 16 → pages 2-7 OK; 8 (pages 4-7 = 0-3) → pages 2-3 OK; 4 → nothing
   paged; saves untouched in all three.
 - Levels switch window 1 to their page before reading; a level from a page the cart lacks uses
   page 1. Power-off kept (ST_CARTIMG): levels come from the cart, a damaged one is read again.

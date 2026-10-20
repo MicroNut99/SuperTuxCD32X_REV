@@ -87,39 +87,6 @@ int cart_probe(void)
 	return cart_mb;
 }
 
-/* Options -> CART TEST: the probe, then a 4 KB pattern on each page (written with 58 + 61, read
- * back by the SH2), then page 1 again with the saves untouched. Lines of text for the screen. */
-int cart_test(char lines[][32], int max)
-{
-	int n = 0;
-	/* the saves (all 13 pieces in use, 0x3F0000-0x3FCFFF + SuperTux's 13) as a sum, not a copy:
-	 * the 32X's work RAM has no 4 KB to spare (the start-up check needs its heap) */
-	const volatile uint8_t *sv = plat_cart_through(0x3F0000u);
-	cart_page(1);
-	uint32_t before = 0;
-	for (uint32_t i = 0; i < 14u * 4096u; i++) before = before * 31u + sv[i];
-	const int mb = cart_probe();
-	put_str(put_dec(put_str(put_dec(put_str(lines[n++], "CART "), (uint32_t)mb, 1), " MB (DISC "), STX_CART_MB, 1), " MB)");
-	for (int p = 2; p <= cart_max_page() && n < max - 1; p++)
-	{
-		plat_cart_page(p);
-		for (int k = 0; k < 2048; k++) plat_save_put_word(k, (uint16_t)(k * 0x9E37u + p * 0x1111u));
-		const int wrote = plat_save_piece(SCRATCH_PIECE);
-		const volatile uint8_t *q = plat_cart_through(SCRATCH_OFF);
-		int bad = 0;
-		for (int k = 0; k < 2048; k++)
-			if ((uint16_t)(q[2 * k] << 8 | q[2 * k + 1]) != (uint16_t)(k * 0x9E37u + p * 0x1111u)) bad++;
-		put_str(put_dec(put_str(lines[n++], "PAGE "), (uint32_t)p, 1), !bad && wrote ? " OK" : wrote ? " READ BACK BAD" : " WRITE FAILED");
-	}
-	plat_cart_page(1);
-	cur_page = 1;
-	uint32_t after = 0;
-	for (uint32_t i = 0; i < 14u * 4096u; i++) after = after * 31u + sv[i];
-	const int same = after == before;
-	if (n < max) put_str(lines[n++], same ? "SAVES UNTOUCHED" : "SAVES CHANGED!");
-	return n;
-}
-
 /* the pack at a level's home is this disc's (SUMS.BIN: a sum over each pack, tools/stx_pack.py):
  * after a power-on the cart still holds what was copied in (battery-backed), but the game only
  * trusts what it checks - another disc's or a half-written pack is read again. Here, not in

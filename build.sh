@@ -42,13 +42,16 @@ DISC=SuperTuxREV10b
 #   - the Sub-CPU program gets command 68 (window 1's page register; docs repo
 #     CD32X_CART_PAGING_PROPOSAL.md) - compiled ONLY in these builds (STX_CART_PAGED);
 #   - the game probes the cart (4 / 8 / 16 MB, shown on the title), keeps levels in pages 2-7,
-#     trusts a level already in the cart only by its sum (SUMS.BIN), Options -> CART TEST;
+#     trusts a level already in the cart only by its sum (SUMS.BIN);
 #   - the disc is SuperTuxREV10b_8MB / _16MB. Without CART_MB: the normal 4 MB build, unchanged.
 CART_MB=${CART_MB:-4}
 case "$CART_MB" in
-  4)    PACK_ARGS=""; ENGINE_DEFS=""; SUB_CCFLAGS="" ;;
+  4)    PACK_ARGS=""; ENGINE_DEFS=""; SUB_HWFLAGS="" ;;
   8|16) PACK_ARGS="--cart-mb $CART_MB"; ENGINE_DEFS="-DSTX_CART_MB=$CART_MB"
-        SUB_CCFLAGS="-m68000 -Wall -Ofast -c -fomit-frame-pointer -DSTX_CART_PAGED=1"
+        # main.c is compiled with the Makefile's HWFLAGS (not CCFLAGS): the same flags + the switch.
+        # (The first test discs set CCFLAGS - command 68 was never in the Sub-CPU program and the
+        # SH2 sat out its wait for an answer: the ~2 minute stop after the loading bar.)
+        SUB_HWFLAGS="-m68000 -Wall -O1 -c -fomit-frame-pointer -DSTX_CART_PAGED=1"
         DISC=${DISC}_${CART_MB}MB ;;
   *)    echo "*** CART_MB is 4, 8 or 16 - stopping"; exit 1 ;;
 esac
@@ -88,7 +91,16 @@ echo "==> engine";      rm -rf "$HERE/mars/obj"     # the switches are compiled 
 [ -f "$HERE/mars/OPENJAZZ.32X" ] || { echo "*** mars/OPENJAZZ.32X was not made - stopping"; exit 1; }
 echo "==> ROM check";   python3 "$HERE/cd32x/ref/openlara/tools/prep_openlara_cd.py" "$HERE/mars/OPENJAZZ.32X" "$ROMS/OPENLARA.32X"
 echo "==> SH2 loader";  cd "$HERE/cd32x/sh2"    && make -f Makefile.cdloader clean && make -f Makefile.cdloader
-echo "==> Sub-CPU";     cd "$HERE/cd32x/subcpu" && make clean && if [ -n "$SUB_CCFLAGS" ]; then make cd CCFLAGS="$SUB_CCFLAGS"; else make cd; fi
+echo "==> Sub-CPU";     cd "$HERE/cd32x/subcpu" && make clean
+if [ -n "$SUB_HWFLAGS" ]; then
+    make cd HWFLAGS="$SUB_HWFLAGS" 2>&1 | tee "$HERE/cd32x/subcpu/make_sub.log"
+    # command 68 must really be compiled in: main.c's compile line carries the switch
+    grep -q "STX_CART_PAGED=1.* main\.c -o main\.o" "$HERE/cd32x/subcpu/make_sub.log" \
+        || { echo "*** main.c was not compiled with STX_CART_PAGED - no command 68 - stopping"; exit 1; }
+    echo "    Sub-CPU: main.c compiled with command 68"
+else
+    make cd
+fi
 
 ISO="$HERE/cd32x/subcpu/CDROMPlayer.iso"
 [ -f "$ISO" ] || { echo "*** $ISO was not made - stopping"; exit 1; }

@@ -436,7 +436,7 @@ static int options_played;            /* R11: a level was played from OPTIONS - 
 
 void options_page(BgFn bg)
 {
-	enum { O_MUSIC, O_LIVES, O_TIMING, O_BUTTONS, O_BACKGROUND, O_MOTION, O_SCROLL, O_DRAW, O_LEVELS, O_CONTROLS, O_STORY, O_SCORES, O_CREDITS, O_CART, O_BACK, O_N };
+	enum { O_MUSIC, O_LIVES, O_TIMING, O_BUTTONS, O_BACKGROUND, O_MOTION, O_SCROLL, O_DRAW, O_LEVELS, O_CONTROLS, O_STORY, O_SCORES, O_CREDITS, O_BACK, O_N };
 	int sel = 0;
 	static char rows[O_N][32];
 	static const char *items[O_N];
@@ -462,7 +462,6 @@ void options_page(BgFn bg)
 		put_str(rows[O_STORY], "STORY");
 		put_str(rows[O_SCORES], "HIGH SCORES");
 		put_str(rows[O_CREDITS], "CREDITS");
-		put_str(rows[O_CART], "CART TEST");            /* 8 / 16 MB test builds only (game/cart.c) */
 		put_str(rows[O_BACK], "BACK");
 		/* R11: LEVEL SELECT only from the title (from a level's pause or the world map it would
 		 * start a level inside another one) */
@@ -472,7 +471,6 @@ void options_page(BgFn bg)
 		{
 			if (i == O_LEVELS && !from_title) continue;
 			if (i == O_BACKGROUND || i == O_DRAW) continue;   /* REV6: the levels are Genesis tiles - no switch */
-			if (i == O_CART && (STX_CART_MB <= 4 || !from_title)) continue;   /* it moves window 1: not inside a level */
 			if (i == sel) at = ns;
 			shown[ns] = i;
 			items[ns++] = rows[i];
@@ -495,21 +493,6 @@ void options_page(BgFn bg)
 		case O_BUTTONS: opt_swap ^= 1; break;
 		case O_BACKGROUND: opt_parallax = (opt_parallax + (d > 0 ? 1 : 2)) % 3; break;   /* from the next level read on */
 		case O_MOTION: opt_smooth ^= 1; break;
-#if STX_CART_MB > 4
-		case O_CART:
-		{
-			/* 8 / 16 MB test builds: the cart's size, each page written and read back, the
-			 * saves on page 1 untouched (game/cart.c cart_test) */
-			char lines[10][32];             /* on the stack: no work RAM kept for a test screen */
-			const char *items_t[10];
-			message_screen(bg, "CART TEST", "WRITING AND READING EACH PAGE...", "", 200, 200);
-			const int n = cart_test(lines, 10);
-			for (int i = 0; i < n; i++) items_t[i] = lines[i];
-			list_style();
-			menu_choose("CART TEST", items_t, n, 0, bg, "B BACK");
-			break;
-		}
-#endif
 		case O_SCROLL: opt_ring ^= 1; yt_set_ring(opt_ring); break;
 		case O_LEVELS:
 		{

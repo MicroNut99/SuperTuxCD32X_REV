@@ -12,7 +12,6 @@ int cart_probe(void);
 int cart_page(int page);               /* window 1 to page 1-7 (pages the cart has) */
 int cart_page_now(void);
 int cart_max_page(void);
-int cart_test(char lines[][32], int max);
 int cart_pack_valid(const uint8_t *pack, uint32_t room, int li);
 #endif
 
