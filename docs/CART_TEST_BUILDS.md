@@ -42,6 +42,17 @@ The switch sets, for these builds only:
 3. **16 MB board:** title `CART 16 MB`; CART TEST pages 2-7 OK; play levels from several worlds,
    power off and on, play them again - no loading screen for a level already played.
 
+## Console test 1 (19 Oct 2026, 4 MB cart, `SuperTuxREV10b_16MB`) - stopped before the title
+The disc stopped on the port's start-up check screen (`OPENJAZZ 32X - BOOT TEST`, shown only
+when a check fails): **`C++ NEW/DELETE: FAILED`, `HEAP 3200 USED, PEAK 3200 OF 5248`**. Not the
+page register: the game never got that far. The test build had taken ~5.4 KB of the 32X's
+SDRAM - a 4 KB copy of the saves in the cart test (bss) and the paging code in `game/level.c`,
+which runs from SDRAM (`.data.hot_level`) - so the heap left for the start-up check shrank from
+~10.6 KB to 5.2 KB. **Fixed:** the cart test sums the save area instead of copying it, its lines
+are on the stack, the checksum check is in `game/cart.c` (cart code) and level.c's paging
+helpers are in `.text.paged` (cart, not SDRAM). The 16 MB build now uses 80 bytes of SDRAM more
+than REV10b (`.data` 51328 vs 51248, `.bss` the same).
+
 ## Checked on the PC (game/host.c models the board: ST_CARTMB=4 / 8 / 16)
 - Probe and CART TEST: 16 → pages 2-7 OK; 8 (pages 4-7 = 0-3) → pages 2-3 OK; 4 → nothing
   paged; saves untouched in all three.

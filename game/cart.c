@@ -92,10 +92,12 @@ int cart_probe(void)
 int cart_test(char lines[][32], int max)
 {
 	int n = 0;
-	static uint8_t saves[4096];
-	const volatile uint8_t *sv = plat_cart_through(0x3F0000u + 13 * 4096u);
+	/* the saves (all 13 pieces in use, 0x3F0000-0x3FCFFF + SuperTux's 13) as a sum, not a copy:
+	 * the 32X's work RAM has no 4 KB to spare (the start-up check needs its heap) */
+	const volatile uint8_t *sv = plat_cart_through(0x3F0000u);
 	cart_page(1);
-	for (int i = 0; i < 4096; i++) saves[i] = sv[i];
+	uint32_t before = 0;
+	for (uint32_t i = 0; i < 14u * 4096u; i++) before = before * 31u + sv[i];
 	const int mb = cart_probe();
 	put_str(put_dec(put_str(put_dec(put_str(lines[n++], "CART "), (uint32_t)mb, 1), " MB (DISC "), STX_CART_MB, 1), " MB)");
 	for (int p = 2; p <= cart_max_page() && n < max - 1; p++)
@@ -111,10 +113,27 @@ int cart_test(char lines[][32], int max)
 	}
 	plat_cart_page(1);
 	cur_page = 1;
-	int same = 1;
-	for (int i = 0; i < 4096; i++) if (sv[i] != saves[i]) same = 0;
+	uint32_t after = 0;
+	for (uint32_t i = 0; i < 14u * 4096u; i++) after = after * 31u + sv[i];
+	const int same = after == before;
 	if (n < max) put_str(lines[n++], same ? "SAVES UNTOUCHED" : "SAVES CHANGED!");
 	return n;
+}
+
+/* the pack at a level's home is this disc's (SUMS.BIN: a sum over each pack, tools/stx_pack.py):
+ * after a power-on the cart still holds what was copied in (battery-backed), but the game only
+ * trusts what it checks - another disc's or a half-written pack is read again. Here, not in
+ * game/level.c: level.c runs from SDRAM, whose bytes the start-up check needs for its heap. */
+int cart_pack_valid(const uint8_t *b, uint32_t room, int li)
+{
+	uint32_t size;
+	const uint8_t *sums = (const uint8_t *)text_file("SUMS.BIN", &size);
+	if (!sums || size < 4u * (uint32_t)(li + 1) || memcmp(b, "OJPK", 4)) return 0;
+	const uint32_t total = be32(b + 16);
+	if (total == 0 || total > room) return 0;
+	uint32_t sum = total;
+	for (uint32_t k = 0; k + 4 <= total; k += 4) sum = sum * 31u + be32(b + k);
+	return sum == be32(sums + 4 * li);
 }
 
 #endif

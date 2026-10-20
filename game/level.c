@@ -123,7 +123,14 @@ static int home_cached(int i)
 /* 8 / 16 MB test builds (game/cart.c): the page of window 1 a home is in - HOMES.BIN's second
  * byte (tools/stx_pack.py --cart-mb); area A and pages the cart does not have: page 1 (there a
  * paged home behaves like a home in the 4 MB ring, so a smaller cart still plays). */
-static int home_page(int i)
+#if STX_CART_MB > 4
+/* the 8 / 16 MB test builds' level code stays in the cart (not SDRAM: the start-up check needs
+ * the heap) - it runs once a level read */
+#define PAGED_CODE __attribute__((section(".text.paged"), noinline))
+#else
+#define PAGED_CODE
+#endif
+static PAGED_CODE int home_page(int i)
 {
 #if STX_CART_MB > 4
 	if (homes[i].area != 2) return 1;
@@ -148,21 +155,18 @@ static int homes_overlap(int i, int j)
 
 /* the level (and the background picture it moves) are in the cart: no disc read */
 #if STX_CART_MB > 4
-/* the pack at a level's home is this disc's (SUMS.BIN: a sum over each pack, tools/stx_pack.py):
- * after a power-on the cart still holds what was copied in (battery-backed), but the game only
- * trusts what it checks - another disc's or a half-written pack is read again */
-static int pack_valid(int li)
+static PAGED_CODE int paged_cached(int li)
 {
-	uint32_t size;
-	const uint8_t *sums = (const uint8_t *)text_file("SUMS.BIN", &size);
-	if (!sums || size < 4u * (uint32_t)(li + 1) || homes[li].area == 0) return 0;
-	const uint8_t *b = pack_base(li);
-	if (memcmp(b, "OJPK", 4)) return 0;
-	const uint32_t total = be32(b + 16);
-	if (total == 0 || total > (uint32_t)homes[li].n * PIECE) return 0;
-	uint32_t sum = total;
-	for (uint32_t k = 0; k + 4 <= total; k += 4) sum = sum * 31u + be32(b + k);
-	return sum == be32(sums + 4 * li);
+	if (!homes_read) read_homes();
+	if (li >= 0 && li < n_homes && homes[li].area != 0 && cart_page(home_page(li))
+	    && cart_pack_valid(pack_base(li), (uint32_t)homes[li].n * PIECE, li))   /* game/cart.c: not SDRAM code */
+	{
+		in_cart[li] = 1;
+		for (int j = 0; j < n_homes; j++)
+			if (j != li && in_cart[j] && homes_overlap(li, j)) in_cart[j] = 0;
+		return 1;
+	}
+	return 0;
 }
 #endif
 
@@ -170,16 +174,10 @@ int level_cached(int li)
 {
 	if (home_cached(li)) return 1;    /* REV6: no picture packs */
 #if STX_CART_MB > 4
-	if (!homes_read) read_homes();
-	if (li >= 0 && li < n_homes && homes[li].area != 0 && cart_page(home_page(li)) && pack_valid(li))
-	{
-		in_cart[li] = 1;
-		for (int j = 0; j < n_homes; j++)
-			if (j != li && in_cart[j] && homes_overlap(li, j)) in_cart[j] = 0;
-		return 1;
-	}
-#endif
+	return paged_cached(li);
+#else
 	return 0;
+#endif
 }
 
 /* a level's or a picture's pieces from the disc to its home; what it overwrites is gone */

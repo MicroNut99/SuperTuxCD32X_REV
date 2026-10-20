@@ -500,8 +500,8 @@ void options_page(BgFn bg)
 		{
 			/* 8 / 16 MB test builds: the cart's size, each page written and read back, the
 			 * saves on page 1 untouched (game/cart.c cart_test) */
-			static char lines[10][32];
-			static const char *items_t[10];
+			char lines[10][32];             /* on the stack: no work RAM kept for a test screen */
+			const char *items_t[10];
 			message_screen(bg, "CART TEST", "WRITING AND READING EACH PAGE...", "", 200, 200);
 			const int n = cart_test(lines, 10);
 			for (int i = 0; i < n; i++) items_t[i] = lines[i];
@@ -692,7 +692,7 @@ int main(int argc, char *argv[])
 			static const char *const items[] = { "START GAME", "BONUS LEVELS", "OPTIONS", "CREDITS", "HIGH SCORES" };
 			title_style();
 #if STX_CART_MB > 4
-			static char hint[40];          /* 8 / 16 MB test builds: what the probe found, on the title */
+			char hint[40];                 /* 8 / 16 MB test builds: what the probe found, on the title */
 			put_str(put_dec(put_str(hint, "SUPERTUX 0.1.3 - 32X - CART "), (uint32_t)cart_mb, 1), " MB");
 			const int c = menu_choose(0, items, 5, sel, bg_title, hint);
 #else
