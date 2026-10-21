@@ -32,7 +32,16 @@
 #include "plat.h"
 
 /* the build's name: the disc (build.sh DISC), the zip and the git tag carry the same */
-#define STX_VERSION "REV11-T1"
+#define STX_VERSION_4MB  "REV11-T2"
+#define STX_VERSION_8MB  "REV11-8MB-T1"
+#define STX_VERSION_16MB "REV11-16MB-T1"
+#if defined(STX_CART_MB) && STX_CART_MB == 16
+#define STX_VERSION STX_VERSION_16MB
+#elif defined(STX_CART_MB) && STX_CART_MB == 8
+#define STX_VERSION STX_VERSION_8MB
+#else
+#define STX_VERSION STX_VERSION_4MB
+#endif
 void game_wait_flip(void);             /* plat_wait_flip + the motion clock (game/game.c) */
 #include "pack.h"
 #include "yt.h"

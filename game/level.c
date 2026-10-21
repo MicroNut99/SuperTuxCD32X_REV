@@ -24,6 +24,7 @@
  * is read straight from the cart.
  */
 #include "stx.h"
+#include "cart.h"
 
 #define MAX_CELLS 15700
 #define MAX_RES   2560                 /* tools/stx_pack.py MAX_RES */
@@ -119,9 +120,32 @@ static int home_cached(int i)
 	return homes[i].area == 0 || in_cart[i];
 }
 
+/* 8 / 16 MB test builds (game/cart.c): the page of window 1 a home is in - HOMES.BIN's second
+ * byte (tools/stx_pack.py --cart-mb); area A and pages the cart does not have: page 1 (there a
+ * paged home behaves like a home in the 4 MB ring, so a smaller cart still plays). */
+#if STX_CART_MB > 4
+/* the 8 / 16 MB test builds' level code stays in the cart (not SDRAM: the start-up check needs
+ * the heap) - it runs once a level read */
+#define PAGED_CODE __attribute__((section(".text.paged"), noinline))
+#else
+#define PAGED_CODE
+#endif
+static PAGED_CODE int home_page(int i)
+{
+#if STX_CART_MB > 4
+	if (homes[i].area != 2) return 1;
+	const int p = homes[i].back;
+	return p >= 2 && p <= cart_max_page() ? p : 1;
+#else
+	(void)i;
+	return 1;
+#endif
+}
+
 static int homes_overlap(int i, int j)
 {
 	if (homes[i].area == 0 || homes[j].area == 0) return 0;
+	if (home_page(i) != home_page(j)) return 0;
 	const uint32_t a0 = home_at(i), a1 = a0 + homes[i].n * PIECE;
 	const uint32_t b0 = home_at(j), b1 = b0 + homes[j].n * PIECE;
 	return a0 < b1 && b0 < a1;
@@ -130,9 +154,43 @@ static int homes_overlap(int i, int j)
 /* REV6: no background picture packs (R4's back_home is gone): each level's GENLVL.BIN has its plane B */
 
 /* the level (and the background picture it moves) are in the cart: no disc read */
+#if STX_CART_MB > 4
+static PAGED_CODE int paged_cached(int li)
+{
+	if (!homes_read) read_homes();
+	if (li >= 0 && li < n_homes && homes[li].area != 0 && cart_page(home_page(li))
+	    && cart_pack_valid(pack_base(li), (uint32_t)homes[li].n * PIECE, li))   /* game/cart.c: not SDRAM code */
+	{
+		in_cart[li] = 1;
+		for (int j = 0; j < n_homes; j++)
+			if (j != li && in_cart[j] && homes_overlap(li, j)) in_cart[j] = 0;
+		return 1;
+	}
+	return 0;
+}
+#endif
+
+/* REV11-16MB: the first start copies every level into its own home (game/cart.c cart_preload):
+ * the pieces a level still needs (0: in the cart with the right sum, or not a paged level) */
+#if STX_CART_MB > 4
+PAGED_CODE int level_preload_pieces(int li)
+{
+	if (!homes_read) read_homes();
+	if (li < 0 || li >= NLEVELS || li >= n_homes || homes[li].area != 2) return 0;
+	return paged_cached(li) ? 0 : homes[li].n;
+}
+static void fetch(int li);
+PAGED_CODE void level_preload(int li) { fetch(li); }
+#endif
+
 int level_cached(int li)
 {
-	return home_cached(li);           /* REV6: no picture packs */
+	if (home_cached(li)) return 1;    /* REV6: no picture packs */
+#if STX_CART_MB > 4
+	return paged_cached(li);
+#else
+	return 0;
+#endif
 }
 
 /* a level's or a picture's pieces from the disc to its home; what it overwrites is gone */
@@ -143,6 +201,9 @@ static void fetch(int li)
 	in_cart[li] = 0;
 	for (int j = 0; j < n_homes; j++)
 		if (j != li && in_cart[j] && homes_overlap(li, j)) in_cart[j] = 0;
+#if STX_CART_MB > 4
+	cart_page(home_page(li));          /* the 68000 writes through window 1 to this page */
+#endif
 	for (int tries = 0; tries < 3; tries++)
 	{
 		if (cart_load(h->fid, h->flen, h->first, h->n, level_progress)
@@ -199,7 +260,13 @@ void load_level(int li)
 	/* REV6: the game is built from Genesis tiles - every level (the title's demo too) is its
 	 * GENLVL.BIN (tiles, map columns, plane B) on the Genesis' planes and LEVELG.BIN / COMPG.BIN
 	 * (the rules, the pictures the 32X draws over the moving things); nothing else */
+#if STX_CART_MB > 4
+	if (!homes_read) read_homes();
+	if (homes[li].area != 0) cart_page(home_page(li));   /* the level's page stays in window 1 */
+	if (!level_cached(li)) fetch(li);
+#else
 	if (!home_cached(li)) fetch(li);
+#endif
 	back_px = 0;
 	gen_bg = 0;
 	gl_level = 0; gl_fell = 0;

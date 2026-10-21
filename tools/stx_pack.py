@@ -354,6 +354,15 @@ def build_level(lv, tdesc, frames, back, genesis=False):
 
 
 def main():
+    # 8 / 16 MB test builds (build.sh CART_MB=8|16): --cart-mb N - levels in pages 2.. of the
+    # 16MB-PCB-CD32X's window 1 (docs/CART_8MB_16MB_DESIGN.md); without it: the 4 MB layout, as before
+    cart_mb = 4
+    if "--cart-mb" in sys.argv:
+        i = sys.argv.index("--cart-mb")
+        cart_mb = int(sys.argv[i + 1])
+        del sys.argv[i:i + 2]
+        if cart_mb not in (8, 16):
+            fail("--cart-mb is 8 or 16")
     if len(sys.argv) < 3:
         sys.exit(__doc__)
     data, out = sys.argv[1], sys.argv[2]
@@ -431,7 +440,18 @@ def main():
                                      ("GENBG1.BIN", stx_genesis.genesis_background1(px, cols, bw, bh))]))
     demo_bgi = 0xFFFF                  # (none resident: area A keeps room for world 1's levels)
     resident = [(n, rd(n)) for n in res_files] + [("DEMO.PAK", packs[DEMO_LEVEL])]
+    if cart_mb > 4:
+        # SUMS.BIN: a sum over each level's pack (game/level.c pack_valid) - after a power-on the
+        # battery-backed cart still holds the packs; the game uses one only if its sum matches
+        def pack_sum(p):
+            total = struct.unpack(">I", p[16:20])[0]
+            s = total
+            for k in range(0, total - 3, 4):
+                s = (s * 31 + struct.unpack(">I", p[k:k + 4])[0]) & 0xFFFFFFFF
+            return s
+        resident.append(("SUMS.BIN", b"".join(struct.pack(">I", pack_sum(packs[li])) for li in range(nlevels))))
     homes = [None] * (nlevels + nback)
+    page_of = {}                       # 8 / 16 MB: a level's page (HOMES.BIN's second byte)
 
     # a level's background picture: picture index + 1 in the home's second byte (0: none - a
     # gradient), REV3: + 0x80 when it moves at its own speed (BACKGROUND MOVES reads it only then;
@@ -446,7 +466,8 @@ def main():
         b = bytearray()
         for i, h in enumerate(homes):
             area, first, n, fid, flen = h if h else (0, 0, 0, 0, 0)
-            b += struct.pack(">BBHHHI", area, level_backs[i] if i < nlevels else 0, first, n, fid, flen)
+            second = (page_of.get(i, 1) if area == 2 else 0) if cart_mb > 4 else (level_backs[i] if i < nlevels else 0)
+            b += struct.pack(">BBHHHI", area, second, first, n, fid, flen)
         return bytes(b)
     image8 = make_pack(resident + [("HOMES.BIN", homes_bin())])   # the size (HOMES.BIN's is fixed)
     a_first = (IMAGE8_AT + len(image8) + CHUNK - 1) // CHUNK * CHUNK
@@ -482,6 +503,61 @@ def main():
         if f.upper().startswith("OJ") and f.upper().endswith(".PAK") or f.upper() == "IMAGE9.RAW":
             os.remove(os.path.join(out, f))
     b_order = [li for li in order if li not in in_a] + [nlevels + i for i in range(nback) if i != demo_bgi]
+    paged = []
+    if cart_mb == 16:
+        # REV11-16MB: EVERY level has its own home, kept for good - the game copies them all in on
+        # the first start (game/cart.c cart_preload). Pages 1-7, 0x280000-0x3EFFFF each (46
+        # pieces of 32 KB; OJnnn.PAK's slot is 0x280000, the last 64 KB of a page are left alone).
+        # Packed largest first into the page with room (all 70: 299 pieces of 322); page 1 - the
+        # page other discs' rings also use - gets the fewest.
+        cap = b_size // CHUNK
+        order_ffd = sorted(b_order, key=lambda li: -pieces(len(blobs[li])))
+        fill = {p: 0 for p in range(2, 8)}; fill[1] = 0
+        place = {}
+        for li in order_ffd:
+            n = pieces(len(blobs[li]))
+            for p in (2, 3, 4, 5, 6, 7, 1):
+                if fill[p] + n <= cap:
+                    place[li] = (p, fill[p]); fill[p] += n; break
+            else:
+                fail("16 MB cart: level %d does not fit in pages 1-7" % li)
+        for li in b_order:
+            p, at_p = place[li]
+            n = pieces(len(blobs[li]))
+            k = li + 1 if li < nlevels else 100 + (li - nlevels)
+            name = "OJ%03d.PAK" % k
+            blob = b"\0" * (at_p * CHUNK) + blobs[li]
+            open(os.path.join(out, name), "wb").write(blob)
+            manifest.append(name)
+            homes[li] = (2, at_p, n, 200 + k, len(blob))
+            page_of[li] = p
+            paged.append(li)
+        b_order = []
+        print("  16 MB cart: pieces a page (1-7): %s of %d" % ([fill[p] for p in range(1, 8)], cap))
+    elif cart_mb > 4:
+        # 8 / 16 MB: pages 2 .. 3 / 7 of window 1, each 0x280000-0x3EFFFF (1.375 MB - OJnnn.PAK's
+        # slot is 0x280000; the last 64 KB of every page are left alone: the owner record, the
+        # probe's scratch piece). A level stays in its page for good; what does not fit shares
+        # page 1's area B as a ring, as on the 4 MB cart.
+        rest = list(b_order)
+        for p in range(2, (7 if cart_mb == 16 else 3) + 1):
+            at = 0
+            while rest:
+                li = rest[0]
+                n = pieces(len(blobs[li]))
+                if at + n * CHUNK > b_size:
+                    break
+                rest.pop(0)
+                k = li + 1
+                name = "OJ%03d.PAK" % k
+                blob = b"\0" * at + blobs[li]
+                open(os.path.join(out, name), "wb").write(blob)
+                manifest.append(name)
+                homes[li] = (2, at // CHUNK, n, 200 + k, len(blob))
+                page_of[li] = p
+                paged.append(li)
+                at += n * CHUNK
+        b_order = rest
     for li in b_order:
         n = pieces(len(blobs[li]))
         if n * CHUNK > b_size:
@@ -508,6 +584,11 @@ def main():
           % (a_first, a_at, ", ".join(str(i + 1) for i in in_a)))
     print("  area B (OJnnn.PAK, a ring of 0x%06X bytes): %d levels, %d background pictures (OJ1nn.PAK)"
           % (b_size, len([i for i in order if i not in in_a]), nback - (1 if demo_bgi != 0xFFFF else 0)))
+    if cart_mb == 16:
+        print("  16 MB cart: all %d levels in pages 1-7, each kept for good (copied in at the first start); SUMS.BIN" % len(paged))
+    elif cart_mb > 4:
+        print("  %d MB cart: %d levels in pages 2-%d (kept for good), %d in page 1's ring; SUMS.BIN"
+              % (cart_mb, len(paged), 7 if cart_mb == 16 else 3, len(b_order)))
     if any(h is None for h in homes):
         fail("not every level / background has a home")
 

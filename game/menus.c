@@ -25,6 +25,7 @@
  * On the PC: ST_DIR/STXSAVE.BIN.
  */
 #include "stx.h"
+#include "cart.h"
 
 /* ------------------------------------------------------------------ saves */
 #define HS_N 10
@@ -119,9 +120,17 @@ void save_store(void)
 {
 	static uint8_t b[SAVE_BYTES];
 	save_pack(b);
-	for (int i = 0; i < SAVE_BYTES / 2; i++)
-		if (!plat_save_put_word(i, b[2 * i] << 8 | b[2 * i + 1])) return;
-	plat_save_piece(SAVE_PIECE);
+#if STX_CART_MB > 4
+	const int keep_page = cart_page_now();
+	cart_page(1);                      /* 8 / 16 MB: the saves are in page 1 (cart 0x3F0000) */
+#endif
+	int ok = 1;
+	for (int i = 0; i < SAVE_BYTES / 2 && ok; i++)
+		if (!plat_save_put_word(i, b[2 * i] << 8 | b[2 * i + 1])) ok = 0;
+	if (ok) plat_save_piece(SAVE_PIECE);   /* a word that did not arrive: no half-written save */
+#if STX_CART_MB > 4
+	cart_page(keep_page);              /* back to the level's page, if one is being played */
+#endif
 }
 #else
 static void save_path(char *p, size_t n) { snprintf(p, n, "%s/STXSAVE.BIN", getenv("ST_DIR") ? getenv("ST_DIR") : "."); }
@@ -640,6 +649,10 @@ int main(int argc, char *argv[])
 	plat_init();
 	res_load();
 	save_load();
+#if STX_CART_MB > 4
+	cart_probe();                      /* 8 / 16 MB builds: 4, 8 or 16 MB (game/cart.c) */
+	cart_preload();                    /* REV11-16MB: every level into the cart, the first time */
+#endif
 	plat_border_colour(0);
 	ps_reset();
 #ifndef OJ32X_MARS
@@ -662,7 +675,13 @@ int main(int argc, char *argv[])
 		{
 			static const char *const items[] = { "START GAME", "BONUS LEVELS", "OPTIONS", "CREDITS", "HIGH SCORES" };
 			title_style();
+#if STX_CART_MB > 4
+			char hint[40];                 /* 8 / 16 MB builds: the build and what the probe found */
+			put_str(put_dec(put_str(hint, "SUPERTUX " STX_VERSION " - CART "), (uint32_t)cart_mb, 1), " MB");
+			const int c = menu_choose(0, items, 5, sel, bg_title, hint);
+#else
 			const int c = menu_choose(0, items, 5, sel, bg_title, "SUPERTUX 0.1.3 - CD 32X - " STX_VERSION);
+#endif
 			list_style();
 			if (c < 0) continue;
 			sel = c;

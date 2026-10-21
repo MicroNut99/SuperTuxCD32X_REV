@@ -70,6 +70,20 @@ for line in open(os.path.join(HERE, "docs/BOOT_FILES.md5")):
         bad += 1
         continue
     data = open(p, "rb").read()
+    if name == 'cd32x/subcpu/main.c':
+        # SuperTux 8 / 16 MB test builds (CART_MB=8|16, approved by MicroNut99 19 Oct 2026):
+        # command 68, the 16MB-PCB-CD32X's window 1 page register (docs repo
+        # CD32X_CART_PAGING_PROPOSAL.md) - inside #if STX_CART_PAGED, not compiled in the 4 MB build
+        b0 = data.find(b"#if STX_CART_PAGED\n")
+        b1 = data.find(b"#endif\n", b0) + len(b"#endif\n") if b0 >= 0 else -1
+        if b0 >= 0 and data.count(b"#if STX_CART_PAGED\n") == 1 \
+                and hashlib.md5(data[b0:b1]).hexdigest() == "bd31dbc0b4fd44ae1dbcf1aabfb5e708" \
+                and data[b1:].startswith(b"        else if (cmd == 53) {"):
+            data = data[:b0] + data[b1:]
+            added += 1
+        else:
+            print("PAGED    %s: the command 68 block (8 / 16 MB test builds) is missing or changed" % name)
+            bad += 1
     for here, orig in REV2_ADDITIONS.get(name, []):
         if data.count(here) == 1:
             data = data.replace(here, orig)

@@ -19,3 +19,6 @@ mars/obj/
 mars/stx32x.*
 mars/OPENJAZZ.32X
 mars/report.txt
+cd32x/sh2/CDLOADER.32x
+cd32x/subcpu/make_sub.log
+SuperTux-0.1.3

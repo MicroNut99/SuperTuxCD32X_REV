@@ -19,6 +19,17 @@
 > build on any other byte. Each such change is first tested in Kega Fusion with the green and white
 > boot diagnostics on (Fusion boots CD32X discs up to the splash), then on the console.
 
+## Release: REV10b
+
+**What this release is:** SuperTux 0.1.3 on the Sega CD32X, rebuilt the Sonic CD way: every
+level is drawn by the Genesis video chip from Genesis tiles, the 32X draws only what moves and
+the sky. It runs on real hardware (Sega CD + 32X + 4 MB RAM cart) with the whole game: all 76
+levels, both Bonus Islands, CD music, saves in the RAM cart (REV5 - confirmed working on the
+console, 16 Oct 2026). On the console it is clearly smoother than R11, with no hitch when the view scrolls.
+The method is described in detail below.
+
+**Not yet done: profiling** on the console (*Options → Timing*). The "Frame rate" figures below are R11's.
+
 ## Why the Sonic CD method ("rip and tear") is faster
 
 **Where the time went before.** In R11 the 32X drew everything: every 16 × 16 cell of the level,
@@ -71,6 +82,91 @@ backgrounds or borders.
 slightly coarser than the 32X's; animated tiles (coins, water) are uploaded frame by frame;
 and the background pictures became 32X gradient skies in the pictures' own colours (REV8-REV9).
 In return the levels scroll smoothly with no hitch, and the SH2s are free for the game.
+
+## The rip and tear method in detail
+
+### 1. When the disc is built (`tools/`)
+- `stx_convert.py` reads SuperTux 0.1.3's data: tiles (half size, 16 × 16), sprites, levels.
+  REV10: tiles whose picture is bigger than one cell (the exit igloo, a tree, statues) are cut
+  into pieces over the cells they cover.
+- `stx_pack.py` makes each level's pack:
+  - `LEVELG.BIN` / `COMPG.BIN` - the level's rules and its pictures as the 32X needs them for
+    the things drawn over Tux (foreground tiles) - with the background left out (see-through).
+  - `GENLVL.BIN` (`stx_genesis.py genesis_level`) - the level as Genesis data:
+    - its pictures cut into **8 × 8 tiles, 4 bits a pixel**; identical and mirrored tiles kept
+      once (a level needs 119-232, plus its animation frames; room for 832);
+    - **4 palettes of 15 colours** (512-colour Genesis), each tile in the palette that shows it
+      best (k-means grouping of the tiles' colours);
+    - the level map as **columns** - 2 Genesis columns per level cell, 30 entries each,
+      identical columns once - so scrolling sideways needs one column per 8 pixels;
+    - **animations** (coins, water, bonus blocks) as groups of tiles with the same speed and
+      length: fixed tiles in video RAM, each frame's pictures uploaded over them;
+    - plane B: empty (REV8 - the 32X draws the sky).
+  - `SKY.BIN` and colours 192-255 - the level's **32X sky**: a gradient (SuperTux's own two
+    colours, or the background picture's own colours top / middle / bottom) for each of the
+    view's 176 lines, as a 4 × 4 ordered-dither pattern of two neighbouring 15-bit colours (no
+    bands). Each colour has the 32X "through" bit.
+
+### 2. The boot path: new commands, nothing changed
+The SH2s cannot reach the Genesis video chip; the 68000 can. REV2 added SH2 → Sub-CPU commands
+that the Sub-CPU passes to the 68000's existing VDP routines (plus two new small ones). Data goes
+from the RAM cart through the 32X's bank window at 0x900000, so the SH2 is never locked out.
+
+| Command | What it does |
+|---|---|
+| 62 | one word into Genesis video RAM (scroll table, a changed map cell) |
+| 63 | tiles / map from the cart into video RAM (up to 1023 words) |
+| 64 | colours from the cart into Genesis CRAM |
+| 65 | a VDP register (plane addresses, display on / off) |
+| 66 | vertical scroll (VSRAM) |
+| 67 | map **columns** from the cart (VDP auto-increment 128: down a 64-cell plane) |
+
+Full list and the rules: [CD32X_COMMAND_LEDGER_ADDITIONS.md](https://github.com/MicroNut99/docs).
+`tools/check_boot.py` lets exactly these added blocks through and stops the build on any
+other change to the boot files.
+
+### 3. Genesis video RAM while a level is on
+
+| Address | Holds |
+|---|---|
+| 0x0000 | font (tile 0 blank) - kept from the boot |
+| 0x4800-0x9FFF, 0xB000-0xBFFF | the level's tiles (832) |
+| 0xA000 | plane B map (empty) |
+| 0xC000 | the boot text's plane (untouched) |
+| 0xD000 / 0xD400 | sprite table (empty) / horizontal scroll |
+| 0xE000 | plane A map: the level, 64 × 32 cells, a ring of 64 columns |
+
+### 4. Each level, each frame (`game/gen_level.c`)
+- **Level start:** Genesis display off; VDP registers for the layout above; palettes, tiles,
+  the 64 map columns around the view, the animation frames, the scroll; display on - and the
+  32X switched in front of the Genesis (VDP bitmap mode PRI = 1, REV7).
+- **The 32X frame:** the 32X frame buffer is a fixed 320 × 176 layer (no scrolling of its
+  own). Only the moving things are drawn - far snow and clouds (with the level's tiles drawn
+  again over them), bad guys, Tux, foreground tiles over Tux, near snow, scores. Every
+  rectangle drawn is noted (widened to the 16-pixel cells) and restored to the sky the next
+  time that buffer is drawn. Nothing else on the 32X changes.
+- **Right after each flip** (the frame now shown): the Genesis scroll registers are set to that
+  frame's camera, so both pictures change at the same refresh; then new map columns coming into
+  view (at most 6 a frame), map cells that changed (a coin taken, a brick broken: 4 words), and
+  animation frames that changed.
+- **Leaving the level** (world map, menus): Genesis display off, its boot registers back,
+  priority back to the Genesis (PRI 0) - those screens are the 32X's as before.
+
+### 5. How the two pictures are combined (the 32X hardware manual's "Priority")
+- PRI 1: the 32X picture in front of the Genesis.
+- A 32X colour with the through bit is shown on the other side - behind the Genesis planes.
+  The sky colours have it, so the sky is behind the level's tiles and shows wherever a tile
+  is see-through; Tux, the bad guys and the panel (normal colours) stay in front.
+- The PC model (`game/host.c`) composites by these rules; it reproduced REV6's console fault
+  (PRI 0: black screen, Tux as an outline) exactly, so mistakes of this kind show up before a
+  disc is burned.
+
+### 6. How it is checked before a disc
+- PC build of the game with a model of the Genesis chip (`host/`): every level, 900 frames of
+  random play, against a reference that clears the whole 32X layer and writes every column
+  every frame - must be identical; every level 3000 frames under address / undefined-behaviour
+  checkers; the title with its demo.
+- The SH2 build; `tools/check_boot.py`; then Fusion (boot), then the console.
 
 ## REV rounds
 | Round | What was ripped out and what replaced it |
@@ -229,8 +325,9 @@ left/right changes a setting. *Options → Jump* swaps A and B (C/B jump, A runs
 - With the timing on, the second panel line ends in `DG` in a level (REV6: the Genesis draws
   every level).
 
-**Status: 38–56 frames per second** in Icyisland's first level, measured on real hardware with
-the timing line (*Options → Timing*). R2 ran at 17–22.
+**R11 (before the rebuild): 38–56 frames per second** in Icyisland's first level, measured on real
+hardware with the timing line (*Options → Timing*). R2 ran at 17–22. **REV7-REV10b (Genesis
+tiles) have not been measured yet** - see "Release: REV10b" above.
 
 The 32X shows a new picture only at a screen refresh (60 a second), so 60 is the ceiling: F on
 the timing line counts real buffer swaps against the refresh counter. A frame now takes about
