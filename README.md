@@ -30,6 +30,63 @@ The method is described in detail below.
 
 **Not yet done: profiling** on the console (*Options → Timing*). The "Frame rate" figures below are R11's.
 
+## REV11 test builds: smoother motion and the 16 MB cart
+
+Two test builds on top of REV10b. Each build's name is on the title, the disc, the zip and the git
+tag (`STX_VERSION` in `game/stx.h`):
+
+| Build | Command | Cart | Title |
+|---|---|---|---|
+| **REV11-T2** | `./build.sh` | 4 MB (the normal disc) | `SUPERTUX 0.1.3 - CD 32X - REV11-T2` |
+| **REV11-16MB-T1** | `CART_MB=16 ./build.sh` | 16 MB (MicroNut99/16MB-PCB-CD32X); also plays on 4 MB | `SUPERTUX REV11-16MB-T1 - CART 16 MB` |
+
+### What was done
+- **Even motion (REV11-T1, in both builds).** Tux stood still on the screen, but the level behind
+  him moved 4, 4, 3, 5, 3 px a frame instead of an even 4, 4, 4, 3 - seen as Tux jittering in the
+  title demo. The game read its clock whenever the loop got to it, after work that takes a
+  different time each frame (the Genesis columns after a frame swap). It now notes the time right
+  after each swap (`game_wait_flip`, game code only). Measured in ares: 5 px jumps in 10 s of the
+  demo 26 → 0, in Welcome to Antarctica 18 → 0.
+- **The whole game in the 16 MB cart (REV11-16MB-T1).** All 70 level packs (9.3 MB) have their
+  own place for good in pages 1-7 of the paged cart, packed largest first so all of them fit
+  (`tools/stx_pack.py --cart-mb 16`). On the first start the game copies every level from the
+  disc into the cart (`game/cart.c cart_preload`). The size probe finds 4, 8 or 16 MB at every
+  start; the cart page is switched with command 68 (below).
+- **Found and checked in the emulator, not by console profiling:** MicroNut99/ares_android's
+  headless runner models the RAM cart and the 16 MB board. It ran the real disc images, the game's
+  own variables were read from 32X memory each frame, and every case below was run before a disc
+  was burned.
+
+### The fast-load advantage (16 MB cart)
+- **No loading screens after the first start** - not for any level, in any world, after any
+  power-off. On the 4 MB cart only Icyisland 1-7 stay in the cart; every other level is read from
+  the disc the first time it is played (a few seconds with its yellow bar) and is pushed out again
+  by the next 5-8 levels played. On the 16 MB cart all 70 stay.
+- **Level Select, the bonus islands, going back to an old level:** straight to the level's intro.
+- **Later starts cost nothing:** each level is checked against its sum (`SUMS.BIN`) at power-on,
+  which takes no visible time. Only a missing or damaged level is copied again - another disc that
+  used the cart's page 1, or a power-off during the copy (the copy goes on where it stopped).
+
+### What is seen once
+On the **first start with a 16 MB cart**, after the usual loading bar:
+**`16 MB CART - COPYING THE LEVELS - ONLY THE FIRST TIME - AFTER THIS NO MORE LOADING SCREENS`**,
+`LEVEL n OF 70` and a bar. In the emulator it takes about 3½-4 minutes (each 32 KB piece is one
+disc read); on the console it may differ. After that the game starts at the title as usual and the
+screen never comes back for that cart. With a 4 MB cart nothing is copied and the game plays as
+REV10b did.
+
+### The boot stack
+- **REV11-T1 / T2: nothing added.** The motion fix is game code; `tools/check_boot.py` passes.
+- **REV11-16MB-T1: command 68** (cart page, window 1), compiled into the Sub-CPU only when
+  `CART_MB=8|16` (`STX_CART_PAGED`, passed through `HWFLAGS` - the first two test discs passed it
+  through `CCFLAGS`, so 68 was missing and the SH2 waited about 2 minutes at start-up for an answer;
+  `build.sh` now stops if `main.c` was compiled without it). It uses the existing 68000 routine 26
+  `safe_cart_xfer`; no new 68000 routine. Recorded in the docs repo's
+  `CD32X_COMMAND_LEDGER_ADDITIONS.md` (section 7). `tools/check_boot.py` accepts exactly that block.
+
+Still to see on the console: the real board's page switch and how long the first copy takes.
+Details: `docs/REV11_T1_NOTES.md`, `docs/REV11_16MB_T1_NOTES.md`, `docs/CART_TEST_BUILDS.md`.
+
 ## Why the Sonic CD method ("rip and tear") is faster
 
 **Where the time went before.** In R11 the 32X drew everything: every 16 × 16 cell of the level,
@@ -257,6 +314,10 @@ The RAM cart keeps its contents without power, and the game uses it as a store o
 - **A level read** shows its name, the lives, its author and a yellow bar. Only the level itself
   is read (R2 also read the splash picture twice before every level).
 
+**16 MB cart (REV11-16MB-T1):** every level has its own place in pages 1–7 and all of them are
+copied in at the first start (once), so no level is ever read from the disc again – see
+"REV11 test builds" above.
+
 Cart layout: program 0–1 MB, shared data and the title's level 1–1.6 MB, world 1's first levels
 1.6–2.5 MB, the other levels 2.5–3.94 MB; the last 64 KB belong to the platform layer. The game's
 saves and high scores are in the Sega CD's backup RAM. The layout is
@@ -420,6 +481,8 @@ console.
 | R9 | Finding the stuck buttons: the timing panel counts pad replies that came back old (S); Options → Motion turns R6's smooth drawing off to compare. |
 | R10 | Options → Scroll RING: the picture wraps up and down, so the view never has to be shifted when Tux jumps; sideways shifts redraw only what differs and happen early on quiet frames; a strip of old picture (R4–R9) fixed. |
 | R11 | Options → Level Select (from the title): any of the 76 levels. |
+| **REV11-16MB-T1** | 16 MB cart: every level copied into the cart at the first start, no loading screens after; command 68 (cart page). |
+| **REV11-T1 / T2** | Even motion: the view moved 3, 5, 3 px a frame (the demo's jitter); the build's name on the title. |
 | **REV10** | The exit igloo, the tree, the statues - big pictures drawn whole; slower credits; small Tux in the title demo. |
 | **REV9** | Dithered 32X skies (no bands); 4 Genesis palettes for the level. |
 | **REV8** | The 32X's gradient skies behind the Genesis level (Sonic32X's way); the Genesis sky off. |
