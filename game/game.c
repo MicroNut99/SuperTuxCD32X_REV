@@ -83,12 +83,26 @@ uint16_t pad_read(uint16_t *hit)
 
 static uint32_t clock_last, clock_acc;
 int interp_a, interp_on;               /* stx.h lerp_fx */
-void step_clock_reset(void) { clock_last = plat_ticks_ms(); clock_acc = 0; interp_a = 0; }
+/* REV11: the motion clock is the time the last frame swap was seen (game_wait_flip), not the
+ * time step_clock runs: the work before it (the Genesis columns after a swap) varies from frame
+ * to frame, so the view moved 3, 5, 3 px a frame instead of 4, 4, 4. Frames are shown at
+ * vblanks; the time between two swaps is what the view should move by. Game code only. */
+static uint32_t flip_mark;
+static int flip_marked;
+void game_wait_flip(void)
+{
+	plat_wait_flip();
+	flip_mark = plat_ticks_ms();
+	flip_marked = 1;
+}
+static uint32_t motion_ms(void) { return flip_marked ? flip_mark : plat_ticks_ms(); }
+void step_clock_reset(void) { clock_last = motion_ms(); clock_acc = 0; interp_a = 0; }
 int step_clock(void)
 {
-	const uint32_t now = plat_ticks_ms();
+	const uint32_t now = motion_ms();
 	uint32_t d = now - clock_last;
 	clock_last = now;
+	if ((int32_t)d < 0) d = 0;
 	if (d > 200) d = 200;
 	clock_acc += d;
 	int steps = (int)(clock_acc / STEP_MS);
@@ -1031,7 +1045,7 @@ static void load_progress(int done, int total)
 {
 	load_done = done;
 	load_total = total;
-	plat_wait_flip();
+	game_wait_flip();
 	yt_screen();
 	bg_loading();
 	panel_show("", "", "", col_white);
@@ -1208,7 +1222,7 @@ int game_play(int li)
 		frame_25 = game_ms / 25;       /* SuperTux's global_frame_counter: one every 25 ms */
 		global_frame = frame_25;
 		t1 = plat_prof_us(); TADD(T_LOGIC, t1 - t0); t0 = t1;
-		plat_wait_flip();
+		game_wait_flip();
 		t1 = plat_prof_us(); TADD(T_WAIT, t1 - t0);
 		if (gl_level) { gl_after_flip(game_ms); t1 = plat_prof_us(); TADD(T_HUD, t1 - t0); }   /* REV4: the Genesis follows the frame now shown */
 		gl_in_loop = 1;

@@ -30,6 +30,10 @@
 #define STX_H
 
 #include "plat.h"
+
+/* the build's name: the disc (build.sh DISC), the zip and the git tag carry the same */
+#define STX_VERSION "REV11-T1"
+void game_wait_flip(void);             /* plat_wait_flip + the motion clock (game/game.c) */
 #include "pack.h"
 #include "yt.h"
 

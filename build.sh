@@ -37,7 +37,7 @@ SRC="${SUPERTUX:-$HERE/SuperTux-0.1.3}"
 OUT="$HERE/build"
 ROMS="$HERE/cd32x/subcpu/ROMS"
 MARKER="SH2-OPENLARA-CD-OL1-LOADER"
-DISC=SuperTuxREV10b
+DISC=SuperTuxREV11-T1   # = STX_VERSION in game/stx.h, the zip and the git tag
 mkdir -p "$OUT" "$ROMS"
 
 echo "==> boot path check (must be Hurrican CD32X's, unchanged)"

@@ -289,7 +289,7 @@ static void wmap_draw(void)
 
 static void frame(void)
 {
-	plat_wait_flip();
+	game_wait_flip();
 	wmap_draw();
 	present_view();
 }

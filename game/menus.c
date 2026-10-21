@@ -194,7 +194,7 @@ int menu_choose(const char *title, const char *const *items, int n, int sel, BgF
 		if (m_lr && (hit & (PAD_LEFT | PAD_RIGHT))) { menu_dir = (hit & PAD_LEFT) ? -1 : 1; return sel; }
 		if (hit & (PAD_A | PAD_C | PAD_START)) return sel;
 		if (hit & PAD_B) return -1;
-		plat_wait_flip();
+		game_wait_flip();
 		gl_after_flip(game_ms);        /* REV6: the title's demo is Genesis tiles too - its scroll after the flip */
 		bg();
 		const int top = m_top;
@@ -221,7 +221,7 @@ void message_screen(BgFn bg, const char *l1, const char *l2, const char *l3, int
 		pad_read(&hit);
 		const uint32_t ms = plat_ticks_ms() - t0;
 		if (ms >= (uint32_t)max_ms || (ms >= (uint32_t)min_ms && (hit & (PAD_A | PAD_B | PAD_C | PAD_START)))) break;
-		plat_wait_flip();
+		game_wait_flip();
 		gl_after_flip(game_ms);        /* REV6: the title's demo is Genesis tiles too - its scroll after the flip */
 		bg();
 		menu_panel(l1 ? l1 : "", l2 ? l2 : "");
@@ -300,7 +300,7 @@ void text_page(const char *file, int pic, int credits)
 			music(track);
 		}
 		if ((hit & (PAD_A | PAD_B | PAD_C | PAD_START)) || page_done) break;
-		plat_wait_flip();
+		game_wait_flip();
 		bg_page();
 		if (credits) put_dec(put_str(l1, "LEFT/RIGHT: MUSIC TRACK "), (uint32_t)track, 2);
 		else l1[0] = 0;
@@ -386,7 +386,7 @@ static void hs_offer(uint32_t score, int level)
 		if ((hit & PAD_LEFT) && hs_pos > 0) hs_pos--;
 		if (hit & (PAD_RIGHT | PAD_A | PAD_B | PAD_C)) hs_pos++;
 		if ((hit & PAD_START) || hs_pos > 2) break;
-		plat_wait_flip();
+		game_wait_flip();
 		bg_entry();
 		menu_panel("UP/DOWN LETTER  LEFT/RIGHT MOVE", "START DONE");
 		present_view();
@@ -662,7 +662,7 @@ int main(int argc, char *argv[])
 		{
 			static const char *const items[] = { "START GAME", "BONUS LEVELS", "OPTIONS", "CREDITS", "HIGH SCORES" };
 			title_style();
-			const int c = menu_choose(0, items, 5, sel, bg_title, "SUPERTUX 0.1.3 - SEGA CD 32X");
+			const int c = menu_choose(0, items, 5, sel, bg_title, "SUPERTUX 0.1.3 - CD 32X - " STX_VERSION);
 			list_style();
 			if (c < 0) continue;
 			sel = c;
