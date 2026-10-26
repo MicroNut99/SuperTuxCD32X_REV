@@ -45,6 +45,15 @@ MARKER="SH2-OPENLARA-CD-OL1-LOADER"
 #   - 16 MB: every level is copied into the cart on the first start (a loading screen once),
 #     after that no loading screens; the cart keeps them (battery) and each is checked by its sum.
 #   - the name (title, disc, zip, git tag) is game/stx.h's STX_VERSION for the cart size.
+# ED: CART_MB=ED - the Mega EverDrive PRO as the 16 MB paged cart (CD32X BootCamp docs/12): the
+#   listener's MODE1-9 turns the page writes into the EverDrive's window registers; pages 1-6 (page 7
+#   would hold its bank 31, the OS's), the levels kept in pages 2-6 the way the 8 MB build keeps them
+#   in 2-3 (no first-start copy of every level: 77 do not fit six pages).  EDSAVE-4: both SH2s wait
+#   in SDRAM for every command whose 68000 side holds RV = 1.
+#   CART_MB=ED EDCD=1 ./build.sh    the disc + cd32x/subcpu/EDCD.32X, the launcher started from the
+#                                   EverDrive menu with the disc in the Sega CD (BOOTCAMP=<folder>,
+#                                   default ../CD32X-BootCamp)
+# Saves still go to the cart's page 1 (the EverDrive wipes its PSRAM at its menu: nothing persists yet).
 CART_MB=${CART_MB:-4}
 case "$CART_MB" in
   4)    PACK_ARGS=""; ENGINE_DEFS=""; SUB_HWFLAGS="" ;;
@@ -54,10 +63,14 @@ case "$CART_MB" in
         # SH2 sat out its wait for an answer: the ~2 minute stop after the loading bar.)
         SUB_HWFLAGS="-m68000 -Wall -O1 -c -fomit-frame-pointer -DSTX_CART_PAGED=1"
         ;;
-  *)    echo "*** CART_MB is 4, 8 or 16 - stopping"; exit 1 ;;
+  ED)   PACK_ARGS="--cart-mb 16 --cart-ed"; ENGINE_DEFS="-DSTX_CART_MB=16 -DSTX_CART_ED"
+        SUB_HWFLAGS="-m68000 -Wall -O1 -c -fomit-frame-pointer -DSTX_CART_PAGED=1 -DCART_ED"
+        echo "==> cart: the Mega EverDrive PRO (16 MB, pages 1-6)"
+        ;;
+  *)    echo "*** CART_MB is 4, 8, 16 or ED - stopping"; exit 1 ;;
 esac
-# the build's name: game/stx.h STX_VERSION (REV11-T2 / REV11-8MB-T1 / REV11-16MB-T1) - the disc,
-# the title, the zip and the git tag carry the same
+# the build's name: game/stx.h STX_VERSION (REV11-T2 / REV11-8MB-T1 / REV11-16MB-T1 / REV11-ED-T1) -
+# the disc, the title, the zip and the git tag carry the same
 VERSION=$(sed -n "s/^#define STX_VERSION_${CART_MB}MB *\"\(.*\)\"/\1/p" "$HERE/game/stx.h")
 [ -n "$VERSION" ] || { echo "*** no STX_VERSION_${CART_MB}MB in game/stx.h - stopping"; exit 1; }
 DISC=SuperTux$VERSION
@@ -95,7 +108,8 @@ echo "==> PC check (game/ on the PC: level 1, 300 frames, frames in build/host_f
 echo "==> engine";      rm -rf "$HERE/mars/obj"     # the switches are compiled into port/plat_mars.c
                         make -C "$HERE/mars" EXTRA_DEFS="-DOJ32X_MUSIC=1 $ENGINE_DEFS"
 [ -f "$HERE/mars/OPENJAZZ.32X" ] || { echo "*** mars/OPENJAZZ.32X was not made - stopping"; exit 1; }
-echo "==> ROM check";   python3 "$HERE/cd32x/ref/openlara/tools/prep_openlara_cd.py" "$HERE/mars/OPENJAZZ.32X" "$ROMS/OPENLARA.32X"
+PREP_MODE1=""; if [ "${EDCD:-0}" = 1 ]; then PREP_MODE1="--mode1"; fi   # MODE1-1 (EDCD=1, below): the RAM jump table too
+echo "==> ROM check";   python3 "$HERE/cd32x/ref/openlara/tools/prep_openlara_cd.py" $PREP_MODE1 "$HERE/mars/OPENJAZZ.32X" "$ROMS/OPENLARA.32X"
 echo "==> SH2 loader";  cd "$HERE/cd32x/sh2"    && make -f Makefile.cdloader clean && make -f Makefile.cdloader
 echo "==> Sub-CPU";     cd "$HERE/cd32x/subcpu" && make clean
 if [ -n "$SUB_HWFLAGS" ]; then
@@ -132,3 +146,21 @@ echo "==> done:"
 echo "    disc: cd32x/subcpu/$DISC.cue (with its .bin) - for a burner (Fusion cannot emulate the RAM cart)"
 echo "    build/host_frames/         what the PC check drew (PPM)"
 echo "    build/previews/            every level as the 32X will draw it"
+
+# EDCD=1 (MODE1-1, CD32X BootCamp docs/12): EDCD.32X, made by the BootCamp's edboot/build_edcd.sh around
+# this disc's Sub-CPU program built a second time for the cartridge boot (MODE1=1 M1PAGE=1, in a copy
+# of cd32x/subcpu: the disc keeps the normal program)
+if [ "${EDCD:-0}" = 1 ]; then
+  BC="${BOOTCAMP:-$HERE/../CD32X-BootCamp}"
+  [ -f "$BC/edboot/build_edcd.sh" ] || { echo "*** EDCD=1 needs the CD32X BootCamp next to this folder (or BOOTCAMP=<folder>): not at $BC"; exit 1; }
+  echo "==> EDCD.32X: the disc started from the EverDrive PRO (cartridge boot)"
+  T=$(mktemp -d); mkdir -p "$T/subcpu/ROMS" "$T/sh2"
+  find "$HERE/cd32x/subcpu" -maxdepth 1 -type f -exec cp {} "$T/subcpu/" \;
+  cp "$HERE/cd32x/sh2/CDLOADER.32x" "$T/sh2/"
+  ( cd "$T/subcpu" && make clean > /dev/null && make CDROMPlayer.bin MODE1=1 M1CTRL0=0x8000 M1PAGE=1 ${SUB_HWFLAGS:+HWFLAGS="$SUB_HWFLAGS"} > "$T/mode1.log" 2>&1 ) \
+    || { tail -20 "$T/mode1.log"; echo "*** the MODE1 Sub-CPU program did not build"; exit 1; }
+  bash "$BC/edboot/build_edcd.sh" "$T/subcpu/CDROMPlayer.bin" "$HERE/cd32x/sh2/CDLOADER.32x" "$HERE/cd32x/subcpu/EDCD.32X"
+  rm -rf "$T"
+  echo "==> EDCD.32X: $HERE/cd32x/subcpu/EDCD.32X - copy it to the EverDrive's SD card and start it from the menu"
+  echo "    with the disc above in the Sega CD (not \"Run Mega-CD\")"
+fi

@@ -363,6 +363,12 @@ def main():
         del sys.argv[i:i + 2]
         if cart_mb not in (8, 16):
             fail("--cart-mb is 8 or 16")
+    # ED: the Mega EverDrive PRO as the 16 MB cart (CD32X BootCamp docs/12): page 7 would hold its
+    # bank 31 (the OS's), so the levels are kept in pages 2-6 as the 8 MB build keeps them in 2-3
+    # (all 77 do not fit six pages at once), the rest in page 1's ring.
+    cart_ed = "--cart-ed" in sys.argv
+    if cart_ed:
+        sys.argv.remove("--cart-ed")
     if len(sys.argv) < 3:
         sys.exit(__doc__)
     data, out = sys.argv[1], sys.argv[2]
@@ -504,7 +510,7 @@ def main():
             os.remove(os.path.join(out, f))
     b_order = [li for li in order if li not in in_a] + [nlevels + i for i in range(nback) if i != demo_bgi]
     paged = []
-    if cart_mb == 16:
+    if cart_mb == 16 and not cart_ed:
         # REV11-16MB: EVERY level has its own home, kept for good - the game copies them all in on
         # the first start (game/cart.c cart_preload). Pages 1-7, 0x280000-0x3EFFFF each (46
         # pieces of 32 KB; OJnnn.PAK's slot is 0x280000, the last 64 KB of a page are left alone).
@@ -540,7 +546,7 @@ def main():
         # probe's scratch piece). A level stays in its page for good; what does not fit shares
         # page 1's area B as a ring, as on the 4 MB cart.
         rest = list(b_order)
-        for p in range(2, (7 if cart_mb == 16 else 3) + 1):
+        for p in range(2, (6 if cart_ed else 7 if cart_mb == 16 else 3) + 1):
             at = 0
             while rest:
                 li = rest[0]
@@ -587,8 +593,8 @@ def main():
     if cart_mb == 16:
         print("  16 MB cart: all %d levels in pages 1-7, each kept for good (copied in at the first start); SUMS.BIN" % len(paged))
     elif cart_mb > 4:
-        print("  %d MB cart: %d levels in pages 2-%d (kept for good), %d in page 1's ring; SUMS.BIN"
-              % (cart_mb, len(paged), 7 if cart_mb == 16 else 3, len(b_order)))
+        print("  %d MB cart%s: %d levels in pages 2-%d (kept for good), %d in page 1's ring; SUMS.BIN"
+              % (cart_mb, " (EverDrive)" if cart_ed else "", len(paged), 6 if cart_ed else 7 if cart_mb == 16 else 3, len(b_order)))
     if any(h is None for h in homes):
         fail("not every level / background has a home")
 

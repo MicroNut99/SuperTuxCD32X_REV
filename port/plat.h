@@ -200,4 +200,7 @@ void plat_fatal(const char *msg) __attribute__((noreturn));
 /* Normal program exit. Never returns. */
 void plat_exit(int code) __attribute__((noreturn));
 
+/* ED / EDSAVE-4: a Sub-CPU command whose 68000 side holds RV = 1 (port/plat_mars.c) */
+int plat_cmd_rv(uint16_t cmd);
+
 #endif

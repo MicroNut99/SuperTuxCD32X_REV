@@ -18,6 +18,23 @@ CCFLAGS = -m68000 -Wall -Ofast -c -fomit-frame-pointer
 HWFLAGS = -m68000 -Wall -O1 -c -fomit-frame-pointer
 LDFLAGS = -T $(LDSCRIPTSDIR)/cd.ld -Wl,-Map=output.map -nostdlib
 ASFLAGS = -m68000 --register-prefix-optional
+# MODE1-1 (CD32X BootCamp docs/12): make CDROMPlayer.bin MODE1=1 - the listener for the cartridge boot
+# from the Mega EverDrive PRO (hw_md.s OL_MODE1), the program EDCD.32X carries.  Without MODE1:
+# unchanged.  build.sh EDCD=1 builds it in a copy of this folder; the disc always gets the normal one.
+ifeq ($(MODE1),1)
+ASFLAGS += --defsym OL_MODE1=1
+ifneq ($(M1CTRL0),)
+ASFLAGS += --defsym OL_M1CTRL0=$(M1CTRL0)
+endif
+ifeq ($(M1SAVE),1)
+ASFLAGS += --defsym OL_M1SAVE=1
+endif
+# MODE1-9: M1PAGE=1 - the page-register writes (a byte to 0xA130F0/F2) become the EverDrive's window
+# registers (page p in window 1 = CTRL4..7 = 4p..4p+3)
+ifeq ($(M1PAGE),1)
+ASFLAGS += --defsym OL_M1PAGE=1
+endif
+endif
 
 PREFIX = $(ROOTDIR)/m68k-elf/bin/m68k-elf-
 CC = $(PREFIX)gcc

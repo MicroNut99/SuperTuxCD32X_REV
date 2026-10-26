@@ -28,7 +28,11 @@ const volatile uint8_t *plat_cart_through(uint32_t off);   /* the cart, not thro
 int cart_mb = 4;                                /* what the probe found (4 until it has run) */
 static int cur_page = 1;                        /* window 1 after power-on: page 1 */
 
+#ifdef STX_CART_ED
+int cart_max_page(void) { return cart_mb >= 16 ? 6 : cart_mb >= 8 ? 3 : 1; }   /* ED: page 7 is the EverDrive's own */
+#else
 int cart_max_page(void) { return cart_mb >= 16 ? 7 : cart_mb >= 8 ? 3 : 1; }
+#endif
 int cart_page_now(void) { return cur_page; }
 
 /* window 1 to page p; nothing is sent on a 4 MB cart (or a page it does not have) */
@@ -94,7 +98,7 @@ int cart_probe(void)
  * later starts only check each level's sum (SUMS.BIN) and copy what is missing or damaged - and
  * no level shows a loading screen again. Only with the whole 16 MB: a smaller cart plays the
  * disc as before (its levels read when played). */
-#if STX_CART_MB == 16
+#if STX_CART_MB == 16 && !defined(STX_CART_ED)   /* ED: the levels are kept as the 8 MB build keeps them, pages 2-6 */
 #define PRE_LEVELS 77
 static uint8_t pre_todo[PRE_LEVELS];
 static int pre_base, pre_total, pre_level, pre_levels;

@@ -147,7 +147,7 @@ void sec_dma1_handler(void) { }
  * and both SH2s use it through the cache-through address (0x26xxxxxx), so neither sees a stale
  * copy; the slave purges its cache before each job, so the level data it reads is current
  * (the SH2 caches write through: the master's writes are already in SDRAM). */
-typedef struct { void (*fn)(void *, int); void *arg; int go; int done; } SlaveJob;
+typedef struct { void (*fn)(void *, int); void *arg; int go; int done; int park, parked; } SlaveJob;   /* ED: park (EDSAVE-4) */
 /* J14b: the slave's part can be switched off while playing (Mode button) to compare the two
  * renderers with the profiler */
 static int slave_draws_now = 1;
@@ -156,11 +156,37 @@ int plat_slave_draws_on(void) { return OJ32X_SLAVE_DRAWS && slave_draws_now; }
 static SlaveJob slave_job;
 #define JOB ((volatile SlaveJob *)((uintptr_t)&slave_job | 0x20000000u))
 
+
+/* ED / EDSAVE-4 (OpenLara CD32X on the Mega EverDrive PRO, 26 Oct 2026; CD32X BootCamp docs/12): on the
+ * EverDrive an SH2's cart access while the 68000 holds RV = 1 is NOT held until RV = 0 - it is
+ * answered at once with garbage (edsave3: ~100% bad words through every such copy).  So for every
+ * command whose 68000 side copies with RV = 1 (46/47 chunks, 68 the page, 61 the save area) both
+ * SH2s wait in this loop, which lives in SDRAM (.data.sdram), with their interrupts masked: nothing
+ * fetches or reads the cart until the Sub-CPU reports the copy done.  A cached loop is luck. */
+__attribute__((section(".data.sdram"), noinline))
+static void sdram_wait(volatile uint16_t *reg16, volatile int *flag, volatile int *ack)
+{	/* reg16: spin while *reg16 != 0 (the master, COMM0); flag: spin while *flag != 0 (the slave,
+	   JOB->park), *ack = 1 first.  No calls, no cart data: this function and its stack only. */
+	uint32_t sr, masked;
+	__asm__ volatile ("stc sr,%0" : "=r"(sr));
+	masked = sr | 0xF0u;
+	__asm__ volatile ("ldc %0,sr" : : "r"(masked));
+	if (ack) *ack = 1;
+	for (int32_t n = 0; n < 8000000; n++) {
+		if (reg16 ? *reg16 == 0 : *flag == 0) break;
+		for (volatile int32_t k = 0; k < 64; k++) {}    /* never hammer a COMM register */
+	}
+	__asm__ volatile ("ldc %0,sr" : : "r"(sr));
+}
+
 void secondary(void)
 {
 	for (;;)
 	{
-		while (!JOB->go) { }
+		while (!JOB->go) {
+			if (JOB->park) sdram_wait(NULL, &JOB->park, &JOB->parked);   /* ED: off the cart (EDSAVE-4) */
+			for (volatile int k = 0; k < 64; k++) {}
+		}
 		JOB->go = 0;
 		*(volatile uint8_t *)0xFFFFFE92 = 0x11;   /* purge + enable the slave's cache */
 		JOB->fn(JOB->arg, 1);
@@ -200,6 +226,21 @@ static int send_cmd(uint16_t cmd, uint32_t tries)
 		comm_pause();
 	return MARS_COMM0 == 0;
 }
+
+/* ED / EDSAVE-4: a command whose 68000 side holds RV = 1 - the slave parked in SDRAM first (it
+ * answers between jobs; a running job finishes first), the master waits in SDRAM too.  Also for
+ * game/yt_mars.c's own command path (46, 68). */
+int plat_cmd_rv(uint16_t cmd)
+{
+	JOB->parked = 0;
+	JOB->park = 1;
+	for (uint32_t n = 0; n < 4000000UL && !JOB->parked; n++) comm_pause();
+	MARS_COMM0 = cmd;
+	sdram_wait(&MARS_COMM0, NULL, NULL);
+	JOB->park = 0;
+	return MARS_COMM0 == 0;
+}
+static int send_cmd_rv(uint16_t cmd, uint32_t tries) { (void)tries; return plat_cmd_rv(cmd); }
 
 static void take_fb(void)
 {
@@ -426,7 +467,7 @@ static void pack_load(void)
 			MARS_COMM2 = (uint16_t)probe[i];
 			MARS_COMM8_32 = len;
 			MARS_COMM12 = 0;
-			if (!send_cmd(CMD_CHUNK_COMPARE, 2000000UL) || MARS_COMM12 != 0) same = 0;
+			if (!send_cmd_rv(CMD_CHUNK_COMPARE, 2000000UL) || MARS_COMM12 != 0) same = 0;
 		}
 		MARS_COMM8_32 = len;
 		if (same && !force_full_load && (plat_read_pad() & (PAD_A | PAD_B | PAD_C)) != (PAD_A | PAD_B | PAD_C))
@@ -446,7 +487,7 @@ static void pack_load(void)
 	{
 		MARS_COMM2 = (uint16_t)(c | 0x8000);   /* OL-13: no read-back (level loads) */
 		MARS_COMM12 = 0;
-		if (!send_cmd(CMD_CHUNK_TO_CART, 2000000UL) || MARS_COMM12 != 0)
+		if (!send_cmd_rv(CMD_CHUNK_TO_CART, 2000000UL) || MARS_COMM12 != 0)
 			pack_bad_chunks++;
 		splash_progress(chunks + c + 1, 2 * chunks);
 	}
@@ -1134,7 +1175,7 @@ int32_t plat_load_pack(int id, uint32_t cart_offset, uint32_t max_bytes)
 	{
 		MARS_COMM2 = (uint16_t)(c | 0x8000);   /* OL-13: no read-back */
 		MARS_COMM12 = 0;
-		if (!send_cmd(CMD_CHUNK_TO_CART, 2000000UL) || MARS_COMM12 != 0)
+		if (!send_cmd_rv(CMD_CHUNK_TO_CART, 2000000UL) || MARS_COMM12 != 0)
 			bad++;
 		for (int i = 0; i < 2; i++) { splash_bar(c + 1, chunks); flip_wait(); }
 	}
@@ -1162,7 +1203,7 @@ int plat_save_piece(int piece)
 {
 	MARS_COMM2 = (uint16_t)piece;
 	MARS_COMM12 = 0;
-	send_cmd(CMD_SAVE_PIECE, 8000000UL);
+	send_cmd_rv(CMD_SAVE_PIECE, 8000000UL);
 	if (MARS_COMM12 == 0) { plat_log("SAVE: WRITING THE CART SAVE AREA FAILED"); return 0; }
 	*(volatile uint8_t *)0xFFFFFE92 = 0x11;   /* purge: the 68000 wrote the cart */
 	return 1;

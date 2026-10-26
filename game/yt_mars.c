@@ -176,8 +176,10 @@ void yt_picture(const uint8_t *pixels)
 #define C_COMM2  (*(volatile uint16_t *)0x20004022)
 #define C_COMM8L (*(volatile uint32_t *)0x20004028)
 #define C_COMM12 (*(volatile uint16_t *)0x2000402C)
+int plat_cmd_rv(uint16_t cmd);           /* port/plat_mars.c: ED / EDSAVE-4 - both SH2s in SDRAM */
 static int c_cmd(uint16_t c)
 {
+	if (c == 46 || c == 68) return plat_cmd_rv(c);   /* the 68000 holds RV = 1 for these */
 	C_COMM0 = c;
 	for (uint32_t n = 0; n < 2000000u && C_COMM0 != 0; n++)
 		for (volatile int k = 0; k < 64; k++) { }

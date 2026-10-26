@@ -35,7 +35,10 @@
 #define STX_VERSION_4MB  "REV11-T2"
 #define STX_VERSION_8MB  "REV11-8MB-T1"
 #define STX_VERSION_16MB "REV11-16MB-T1"
-#if defined(STX_CART_MB) && STX_CART_MB == 16
+#define STX_VERSION_EDMB "REV11-ED-T1"       /* the Mega EverDrive PRO: 16 MB, pages 1-6 (CD32X BootCamp docs/12) */
+#if defined(STX_CART_ED)
+#define STX_VERSION STX_VERSION_EDMB
+#elif defined(STX_CART_MB) && STX_CART_MB == 16
 #define STX_VERSION STX_VERSION_16MB
 #elif defined(STX_CART_MB) && STX_CART_MB == 8
 #define STX_VERSION STX_VERSION_8MB
