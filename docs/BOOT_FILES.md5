@@ -2,7 +2,7 @@
 # md5 of the files as taken over; tools/check_boot.py compares against these
 # ED (26 Oct 2026): cd32x/subcpu/hw_md.s + Makefile carry the CD32X BootCamp's MODE1 switches (the Mega EverDrive
 # PRO cartridge boot; nothing assembles without MODE1=1), port/plat_mars.c + plat.h the EDSAVE-4 wait
-# (plat_cmd_rv) - the same four files as Hurrican CD32X's ED build.  Their md5s are of that state.
+# (plat_cmd_rv), prep_openlara_cd.py the --mode1 jump table - the same files as Hurrican CD32X's ED build.
 e0954396dd5dc434e949aa69d8879b19  cd32x/ref/APP.BIN
 e90a268d465f0abe4da57539cb48ae94  cd32x/ref/APP_openlara.BIN
 2be6329407458fb27bc065d44fbbdaaf  cd32x/ref/cdl_crt0.s
@@ -35,7 +35,7 @@ e3c7b97f31e5d840f7a13e5fd5153eaa  cd32x/ref/openlara/subcpu/scd_fs.c
 7ed94f7cf681f9dcc30b5381b2d85e75  cd32x/ref/openlara/tools/make_boot_image.py
 a501e438d631ed5ee3d2f33a748696a0  cd32x/ref/openlara/tools/make_ol_splash.py
 c16160b8103b9b18e8b5e46348db2cb3  cd32x/ref/openlara/tools/make_sfx_packs.py
-84493592b5f668081b52c9b4420c4d93  cd32x/ref/openlara/tools/prep_openlara_cd.py
+14b1b24902e172ddffb824dddd91251e  cd32x/ref/openlara/tools/prep_openlara_cd.py
 7c3d788f6dd744941a38a23be7bb7161  cd32x/ref/subcpu_crt0.s
 2798acd453865044da42c9aeae918705  cd32x/sh2/Makefile.cdloader
 a5399fd233321a10693ea68b791f5ba8  cd32x/sh2/cdl_crt0.s
