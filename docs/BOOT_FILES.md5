@@ -3,6 +3,8 @@
 # ED (26 Oct 2026): cd32x/subcpu/hw_md.s + Makefile carry the CD32X BootCamp's MODE1 switches (the Mega EverDrive
 # PRO cartridge boot; nothing assembles without MODE1=1), port/plat_mars.c + plat.h the EDSAVE-4 wait
 # (plat_cmd_rv), prep_openlara_cd.py the --mode1 jump table - the same files as Hurrican CD32X's ED build.
+# ED-PAGE (26 Oct 2026): main.c's CMD 68 sends four WORD writes to CTRL4-7 under CART_ED (command 27),
+# because the EverDrive ignores the single even byte to 0xA130F2 the 16MB-PCB cart's page register wants.
 # ED-SAVE (26 Oct 2026): main.c CMD 61 writes the EverDrive's save bank under CART_EDSAVE (+ CMD 69, in the
 # STX_CART_PAGED block), plat_mars.c plat_save_read / ed_fetch, mars_syscalls.c reads through it - as Hurrican's b3e89c9.
 e0954396dd5dc434e949aa69d8879b19  cd32x/ref/APP.BIN
@@ -56,7 +58,7 @@ d1331ac9f8389f8004161ab8ca573e58  cd32x/subcpu/font.s
 83757f9b1f4963cbe5936ec4c9dd621d  cd32x/subcpu/hw_md.s
 7d21c4c1b10ea51611247af7d364a84e  cd32x/subcpu/iso2bin.py
 59ddb6c8154f98101e90697fec7b38ba  cd32x/subcpu/kos.s
-e8ab1df9c44397d28cbe55e5f38451a0  cd32x/subcpu/main.c
+a351945ca06cb0e98f1e0cdfb830dc0c  cd32x/subcpu/main.c
 463ff58dcc02ea41e6f1155bfbad2d77  cd32x/subcpu/make_mixed_cd2.py
 85abc2a7ad81184c01eb514188fcd6b1  cd32x/subcpu/scd.c
 e3c7b97f31e5d840f7a13e5fd5153eaa  cd32x/subcpu/scd_fs.c

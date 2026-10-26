@@ -78,7 +78,7 @@ for line in open(os.path.join(HERE, "docs/BOOT_FILES.md5")):
         b0 = data.find(b"#if STX_CART_PAGED\n")
         b1 = data.find(b"#endif\n        else if (cmd == 53) {", b0) + len(b"#endif\n") if b0 >= 0 else -1   # the block's own #endif (ED-SAVE has #ifdef CART_EDSAVE inside)
         if b0 >= 0 and data.count(b"#if STX_CART_PAGED\n") == 1 \
-                and hashlib.md5(data[b0:b1]).hexdigest() == "4907ca5e8223c1e6bddb5fc2c943812c" \
+                and hashlib.md5(data[b0:b1]).hexdigest() == "dda0f74eee532bd5688392b9c65a37a9" \
                 and data[b1:].startswith(b"        else if (cmd == 53) {"):
             data = data[:b0] + data[b1:]
             added += 1

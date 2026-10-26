@@ -186,6 +186,12 @@ static void cx(int src, int dst, int len)
 {
     do_md_cmd3(MD_CMD_SAFE_CART_XFER, src, dst, len);
 }
+#ifdef CART_ED
+static void cxw(int src, int dst, int len)         /* ED-PAGE: command 27 - WORDS, not bytes */
+{
+    do_md_cmd3(MD_CMD_SAFE_CART_XFER_W, src, dst, len);
+}
+#endif
 
 static int safe_cart_present(char *temp, char *tbuf)
 {
@@ -999,15 +1005,42 @@ int main(void)
            off.  Window 0 (the program) is never paged.  The SH2 purges its caches afterwards. */
         else if (cmd == 68) {
             int page = do_md_cmd1(MD_CMD_READ_32X_16, 0xA15122) & 0xFFFF;
+#ifdef CART_ED
+            int ok = page >= 1 && page <= 6;       /* ED: page 7 is the EverDrive's banks 28-31, and
+                                                      31 is its save bank - never hand it out */
+#else
             int ok = page >= 1 && page <= 7;
+#endif
             if (ok) {
 #ifdef CART_EDSAVE
                 ed_page = page;
 #endif
+                /* ED-PAGE (26 Oct 2026, measured on the console with CD32X-BootCamp/edpage): the EverDrive IGNORES
+                   the one even byte to 0xA130F2 that the 16MB-PCB cart's page register wants, and TAKES a word write
+                   to CTRL4-7 (0xA130F8..FE = the four 512 KB windows of cart 0x200000-0x3FFFFF).  An ED build
+                   therefore asks the listener for the four word writes itself instead of for that byte.  Command 27
+                   (SAFE_CART_XFER_W), not 26: 26 asks for BYTES - the listener would write each register as two byte
+                   writes, and an even-byte write is exactly what is ignored - while 27 sets d3 = 1 and m1_cpy makes
+                   one move.w per register.  A 2-byte length also misses m1_page's interception, which wants exactly
+                   1, so the copy goes the ordinary way (m1_cart -> m1_rvcpy -> m1_cpy_w: RV = 1, W on for the
+                   write).  The stack does not change and no 4 / 8 / 16 MB build is touched. */
+#ifdef CART_ED
+                {
+                    int k;
+                    for (k = 0; k < 4; k++) {
+                        PB(0) = 0;                           /* the bank as a WORD */
+                        PB(1) = (uint8_t)(page * 4 + k);     /* page p -> banks 4p..4p+3 */
+                        switch_banks();                      /* Word RAM -> 68000 */
+                        cxw(XM(0), 0xA130F8 + 2 * k, 2);
+                        switch_banks();
+                    }
+                }
+#else
                 PB(0) = (uint8_t)page;
                 switch_banks();                              /* Word RAM -> 68000 */
                 cx(XM(0), 0xA130F2, 1);
                 switch_banks();
+#endif
             }
             do_md_cmd2(MD_CMD_WRITE_32X_16, 0xA1512C, ok);
             do_md_cmd2(MD_CMD_WRITE_32X_16, 0xA15120, 0);
