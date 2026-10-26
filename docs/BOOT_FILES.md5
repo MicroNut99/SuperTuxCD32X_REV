@@ -3,6 +3,8 @@
 # ED (26 Oct 2026): cd32x/subcpu/hw_md.s + Makefile carry the CD32X BootCamp's MODE1 switches (the Mega EverDrive
 # PRO cartridge boot; nothing assembles without MODE1=1), port/plat_mars.c + plat.h the EDSAVE-4 wait
 # (plat_cmd_rv), prep_openlara_cd.py the --mode1 jump table - the same files as Hurrican CD32X's ED build.
+# ED-SAVE (26 Oct 2026): main.c CMD 61 writes the EverDrive's save bank under CART_EDSAVE (+ CMD 69, in the
+# STX_CART_PAGED block), plat_mars.c plat_save_read / ed_fetch, mars_syscalls.c reads through it - as Hurrican's b3e89c9.
 e0954396dd5dc434e949aa69d8879b19  cd32x/ref/APP.BIN
 e90a268d465f0abe4da57539cb48ae94  cd32x/ref/APP_openlara.BIN
 2be6329407458fb27bc065d44fbbdaaf  cd32x/ref/cdl_crt0.s
@@ -54,7 +56,7 @@ d1331ac9f8389f8004161ab8ca573e58  cd32x/subcpu/font.s
 83757f9b1f4963cbe5936ec4c9dd621d  cd32x/subcpu/hw_md.s
 7d21c4c1b10ea51611247af7d364a84e  cd32x/subcpu/iso2bin.py
 59ddb6c8154f98101e90697fec7b38ba  cd32x/subcpu/kos.s
-de382451abae32a909120e07c6b04a6b  cd32x/subcpu/main.c
+e8ab1df9c44397d28cbe55e5f38451a0  cd32x/subcpu/main.c
 463ff58dcc02ea41e6f1155bfbad2d77  cd32x/subcpu/make_mixed_cd2.py
 85abc2a7ad81184c01eb514188fcd6b1  cd32x/subcpu/scd.c
 e3c7b97f31e5d840f7a13e5fd5153eaa  cd32x/subcpu/scd_fs.c
@@ -64,12 +66,12 @@ e3c7b97f31e5d840f7a13e5fd5153eaa  cd32x/subcpu/scd_fs.c
 66ac42873dc38e8e92747de5cd3a1ef9  port/mars/font3x5.h
 c6ff810b23d0a74d046e7680899b8ee5  port/mars/oj.ld
 eee0dee087daafef12e8814a39ff65c3  port/mars_boottest.cpp
-3da73017b068ca5c2d59646d5dcf6bb0  port/mars_syscalls.c
+cffda60791211a0faa10eaa7585eabe8  port/mars_syscalls.c
 72fbb7ae09103d710859845a2254474b  port/mixer.h
 e103ebf4a941106e4aa58666b88031bc  port/pack.c
 17400350a6e3535f2fe2c23af8beae2c  port/pack.h
 fbecdee402a51f7061f927dde85c527c  port/plat.h
-2fe8b4f428a76c8330ed261cedfd3552  port/plat_mars.c
+3dc9b7298ed3f044f5d59ebcdfa49479  port/plat_mars.c
 52d68454f0998a5c2e03b4d9b0834374  tools/make_boot_image.py
 818bdb43ae676ad3a8deffa31b7114ca  tools/make_oj_rom.py
 ab53af15dd1a6216ebb76cc183114621  tools/mars_boot.bin

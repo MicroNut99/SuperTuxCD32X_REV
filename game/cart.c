@@ -55,9 +55,12 @@ static void write_marker(int page)
 	for (int k = 0; k < 4; k++) plat_save_put_word(k, marker(page, k));
 	plat_save_piece(SCRATCH_PIECE);
 }
-static int read_marker(void)
+void plat_save_read(int piece, int off, uint8_t *dst, int n);   /* port/plat_mars.c: the cart, or the EverDrive's save bank */
+static int read_marker(int shown)
 {
-	const volatile uint8_t *p = plat_cart_through(SCRATCH_OFF);
+	uint8_t p[8];
+	if (shown == 1) plat_save_read(SCRATCH_PIECE, 0, p, 8);   /* ED-SAVE: page 1's piece is in the bank */
+	else { const volatile uint8_t *c = plat_cart_through(SCRATCH_OFF); for (int k = 0; k < 8; k++) p[k] = c[k]; }
 	for (int pg = 1; pg <= 7; pg++)
 	{
 		int same = 1;
@@ -79,11 +82,11 @@ int cart_probe(void)
 	plat_cart_page(2); write_marker(2);
 	plat_cart_page(6); write_marker(6);
 	plat_cart_page(1);
-	const int on1 = read_marker();
+	const int on1 = read_marker(1);
 	plat_cart_page(6);
-	const int on6 = read_marker();
+	const int on6 = read_marker(6);
 	plat_cart_page(2);
-	const int on2 = read_marker();
+	const int on2 = read_marker(2);
 	plat_cart_page(1);
 	cur_page = 1;
 	if (on1 != 1) cart_mb = 4;

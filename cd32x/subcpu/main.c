@@ -362,6 +362,15 @@ static int pcm_load(const char *name) {           /* OL-6: SFX<level>.BIN */
 static uint8_t bram_work[0x640];
 static uint8_t bram_str[16];
 static uint8_t bram_buf[BRAM_BYTES];
+#ifdef CART_EDSAVE
+/* ED-SAVE (CART_EDSAVE, the EverDrive launcher's program only - build.sh EDCD_SAVE=1): page 1's save
+   area (pieces 0-15, cart 0x3F0000 + piece * 4 KB) lives in the EverDrive's save bank instead - bank 31,
+   kept on the SD card - which the listener (MODE1-7, M1SAVE=1) reaches as cart 0x800000: CMD 61 writes
+   it there while window 1 shows page 1, CMD 69 brings a piece of it into the 4 KB buffer for the SH2
+   (CMD 57).  The EverDrive wipes its PSRAM at its menu, so nothing in page 1 itself would outlive a
+   relaunch (OpenLara CD32X EDSAVE-1; CD32X BootCamp docs/12). */
+static int ed_page = 1;                            /* what window 1 shows (1 after the boot; CMD 68) */
+#endif
 static const char bram_name[12] = "OPENJAZZ_JJ";   /* OJ-J11: OpenJazz's own file (OL-5 had OPENLARA_TR) */
 static uint8_t bram_param[14];
 static int bram_ready = 0;
@@ -931,19 +940,56 @@ int main(void)
             volatile uint8_t *wr = (volatile uint8_t *)0x0C0000;
             for (k = 0; k < 4096; k++) wr[k] = bram_buf[k];
             switch_banks();
-            do_md_cmd3(MD_CMD_CHILLY_RV_MEMCPY, 0x400000 + coff, 0x200000, 4096);
-            do_md_cmd2(MD_CMD_WRITE_32X_16, 0xA15104, (int)(coff >> 20) & 3);
-            do_md_cmd3(MD_CMD_CHILLY_MEMCPY, 0x208000, 0x900000 + (coff & 0xFFFFF), 4096);
+#ifdef CART_EDSAVE
+            if (ed_page == 1) {
+                /* ED-SAVE: into the EverDrive's save bank and back out of it (the listener's window-1
+                   route: RV = 1, the write bit on for the write only) */
+                do_md_cmd3(MD_CMD_CHILLY_RV_MEMCPY, 0x800000 + (uint32_t)piece * 4096, 0x200000, 4096);
+                do_md_cmd3(MD_CMD_CHILLY_RV_MEMCPY, 0x208000, 0x800000 + (uint32_t)piece * 4096, 4096);
+            } else
+#endif
+            {
+                do_md_cmd3(MD_CMD_CHILLY_RV_MEMCPY, 0x400000 + coff, 0x200000, 4096);
+                do_md_cmd2(MD_CMD_WRITE_32X_16, 0xA15104, (int)(coff >> 20) & 3);
+                do_md_cmd3(MD_CMD_CHILLY_MEMCPY, 0x208000, 0x900000 + (coff & 0xFFFFF), 4096);
+            }
             switch_banks();
             {
                 volatile uint8_t *cart = (volatile uint8_t *)0x0C8000;
                 for (k = 0; k < 4096; k++)
                     if (cart[k] != bram_buf[k]) { ok = 0; break; }
             }
+#ifdef CART_EDSAVE
+            if (ok && ed_page == 1) ok |= 0x200;        /* ED-SAVE: it went to the save bank */
+#endif
             do_md_cmd2(MD_CMD_WRITE_32X_16, 0xA1512C, ok);
             do_md_cmd2(MD_CMD_WRITE_32X_16, 0xA15120, 0);
         }
 #if STX_CART_PAGED
+        else if (cmd == 69) {
+            /* ED-SAVE - CMD 69 "save piece in": COMM2 = a piece (0-15) -> the 4 KB buffer, which the SH2
+               reads word by word with CMD 57; COMM2 = 0x8000 asks only what this program does.  Reply
+               COMM12: 1 | 0x200 (page 1's save area is in the EverDrive's save bank: read it this way,
+               the cart has none).  The disc's own program answers 1: the SH2 reads the cart as before.
+               (62 is SET_VRAM here, so 69 - OpenJazz REV / Hurrican use 62.) */
+            int piece = do_md_cmd1(MD_CMD_READ_32X_16, 0xA15122);
+            int caps = 1;
+#ifdef CART_EDSAVE
+            caps |= 0x200;
+            if (piece != 0x8000) {
+                int k;
+                volatile uint8_t *rd = (volatile uint8_t *)0x0C8000;
+                switch_banks();
+                do_md_cmd3(MD_CMD_CHILLY_RV_MEMCPY, 0x208000, 0x800000 + (uint32_t)(piece & 15) * 4096, 4096);
+                switch_banks();
+                for (k = 0; k < 4096; k++) bram_buf[k] = rd[k];
+            }
+#else
+            (void)piece;
+#endif
+            do_md_cmd2(MD_CMD_WRITE_32X_16, 0xA1512C, caps);
+            do_md_cmd2(MD_CMD_WRITE_32X_16, 0xA15120, 0);
+        }
         /* SuperTux 8 / 16 MB TEST BUILDS ONLY (build.sh CART_MB=8|16 compiles this; the 4 MB
            build does not) - docs repo CD32X_CART_PAGING_PROPOSAL.md, the merged form:
              68  cart window 1 page  COMM2 = page 1-7; reply COMM12 = 1 written, 0 refused
@@ -955,6 +1001,9 @@ int main(void)
             int page = do_md_cmd1(MD_CMD_READ_32X_16, 0xA15122) & 0xFFFF;
             int ok = page >= 1 && page <= 7;
             if (ok) {
+#ifdef CART_EDSAVE
+                ed_page = page;
+#endif
                 PB(0) = (uint8_t)page;
                 switch_banks();                              /* Word RAM -> 68000 */
                 cx(XM(0), 0xA130F2, 1);

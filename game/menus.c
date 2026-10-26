@@ -109,11 +109,11 @@ static void save_pack(uint8_t *b)
 #define SAVE_PIECE 13
 int plat_save_put_word(int index, int value);   /* port/plat_mars.c (CMD 58) */
 int plat_save_piece(int piece);                 /* port/plat_mars.c (CMD 61) */
+void plat_save_read(int piece, int off, uint8_t *dst, int n);   /* port/plat_mars.c: the cart, or the EverDrive's save bank */
 static void save_load(void)
 {
 	static uint8_t b[SAVE_BYTES];
-	const volatile uint8_t *p = (const volatile uint8_t *)(0x223F0000u + SAVE_PIECE * 4096u);
-	for (int i = 0; i < SAVE_BYTES; i++) b[i] = p[i];
+	plat_save_read(SAVE_PIECE, 0, b, SAVE_BYTES);   /* the cart, or the EverDrive's save bank (ED-SAVE) */
 	save_unpack(b);                    /* not "STX2" (never saved, a blank cart): the defaults */
 }
 void save_store(void)

@@ -1191,6 +1191,8 @@ void plat_packs_ready(void) { }
  * compared; reply COMM12 1 = ok). The SH2 reads the area directly (port/mars_syscalls.c). */
 #define CMD_SAVE_PUT   58
 #define CMD_SAVE_PIECE 61
+static uint8_t ed_buf[4096];             /* ED-SAVE (below): the piece last brought in from the save bank */
+static int ed_piece = -1;
 
 int plat_save_put_word(int index, int value)
 {
@@ -1206,7 +1208,56 @@ int plat_save_piece(int piece)
 	send_cmd_rv(CMD_SAVE_PIECE, 8000000UL);
 	if (MARS_COMM12 == 0) { plat_log("SAVE: WRITING THE CART SAVE AREA FAILED"); return 0; }
 	*(volatile uint8_t *)0xFFFFFE92 = 0x11;   /* purge: the 68000 wrote the cart */
+	ed_piece = -1;                             /* ED-SAVE: the Sub-CPU's buffer is ours now */
 	return 1;
+}
+
+/* ---- ED-SAVE: page 1's save area in the EverDrive's save bank (cd32x/subcpu/main.c CMD 61/69,
+ * CART_EDSAVE; build.sh EDCD_SAVE=1).  The SH2 cannot see that bank, so every read of the area goes
+ * through the Sub-CPU: CMD 69 brings a 4 KB piece into its buffer (kept here until a write), CMD 57
+ * hands out the words.  The Sub-CPU says once (CMD 69, COMM2 = 0x8000) whether it works that way
+ * (0x200): the disc's own program says no and the area is read from the cart as before.  SuperTux
+ * reads and writes the area with page 1 in window 1 (game/menus.c, game/cart.c). */
+#define CMD_SAVE_GET  57
+#define CMD_SAVE_IN   69
+static int ed_bank = -1;                 /* -1 not asked, 0 the cart, 1 the EverDrive's save bank */
+static int ed_save_bank(void)
+{
+	if (ed_bank < 0) {
+#if STX_CART_MB > 4
+		MARS_COMM2 = 0x8000;                 /* the paged Sub-CPU programs answer CMD 69 */
+		MARS_COMM12 = 0;
+		ed_bank = send_cmd(CMD_SAVE_IN, 2000000UL) && (MARS_COMM12 & 0x200) ? 1 : 0;
+#else
+		ed_bank = 0;                         /* the 4 MB disc's program has no CMD 69: the cart */
+#endif
+	}
+	return ed_bank;
+}
+static void ed_fetch(int piece)
+{
+	if (piece == ed_piece) return;
+	MARS_COMM2 = (uint16_t)piece;
+	if (!send_cmd_rv(CMD_SAVE_IN, 2000000UL)) { plat_log("SAVE BANK: PIECE TIMED OUT"); return; }
+	for (int i = 0; i < 2048; i++) {
+		MARS_COMM2 = (uint16_t)i;
+		send_cmd(CMD_SAVE_GET, 400000UL);
+		const uint16_t w = MARS_COMM8;
+		ed_buf[2 * i] = (uint8_t)(w >> 8);
+		ed_buf[2 * i + 1] = (uint8_t)w;
+	}
+	ed_piece = piece;
+}
+/* n bytes at off of save-area piece <piece> (page 1 in window 1, the caller's business) */
+void plat_save_read(int piece, int off, uint8_t *dst, int n)
+{
+	if (ed_save_bank()) {
+		ed_fetch(piece);
+		for (int i = 0; i < n; i++) dst[i] = ed_buf[off + i];
+		return;
+	}
+	const volatile uint8_t *p = (const volatile uint8_t *)(0x223F0000u + (uint32_t)piece * 4096u + (uint32_t)off);
+	for (int i = 0; i < n; i++) dst[i] = p[i];
 }
 
 /* J19: the port's own settings (0 = FPS counter shown, 1 = A/B swapped): save-area piece 10,
@@ -1214,8 +1265,9 @@ int plat_save_piece(int piece)
 #define PORT_SET_PIECE 10
 int plat_port_setting(int key)
 {
-	const volatile uint8_t *p = (const volatile uint8_t *)(0x223F0000u + PORT_SET_PIECE * 4096u);
+	uint8_t p[12];
 	if (key < 0 || key > 7) return 0;
+	plat_save_read(PORT_SET_PIECE, 0, p, 12);        /* ED-SAVE: through the bank when it is there */
 	if (p[0] != 'O' || p[1] != 'J' || p[2] != 'P' || p[3] != 'S')
 		return key == 0 ? 1 : 0;        /* J19b: nothing saved yet - the FPS counter starts on */
 	return p[4 + key];

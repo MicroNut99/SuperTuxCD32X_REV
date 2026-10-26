@@ -53,7 +53,12 @@ MARKER="SH2-OPENLARA-CD-OL1-LOADER"
 #   CART_MB=ED EDCD=1 ./build.sh    the disc + cd32x/subcpu/EDCD_SUPERTUX.32X, the launcher started from the
 #                                   EverDrive menu with the disc in the Sega CD (BOOTCAMP=<folder>,
 #                                   default ../CD32X-BootCamp)
-# Saves still go to the cart's page 1 (the EverDrive wipes its PSRAM at its menu: nothing persists yet).
+#   EDCD_SAVE=1                     (with EDCD=1) ED-SAVE: page 1's save area (the save, piece 13; the port's
+#                                   settings; the probe's marker) in the EverDrive's save bank, kept on the SD
+#                                   card as MEGA/gamedata/EDCD_SUPERTUX.32X/bram.srm - the launcher's program
+#                                   (CART_EDSAVE, listener M1SAVE=1, RA header); the disc is the same either
+#                                   way (the game asks the Sub-CPU, CMD 69)
+# Without EDCD_SAVE the saves go to the cart's page 1, which the EverDrive wipes at its menu.
 CART_MB=${CART_MB:-4}
 case "$CART_MB" in
   4)    PACK_ARGS=""; ENGINE_DEFS=""; SUB_HWFLAGS="" ;;
@@ -157,7 +162,7 @@ if [ "${EDCD:-0}" = 1 ]; then
   T=$(mktemp -d); mkdir -p "$T/subcpu/ROMS" "$T/sh2"
   find "$HERE/cd32x/subcpu" -maxdepth 1 -type f -exec cp {} "$T/subcpu/" \;
   cp "$HERE/cd32x/sh2/CDLOADER.32x" "$T/sh2/"
-  ( cd "$T/subcpu" && make clean > /dev/null && make CDROMPlayer.bin MODE1=1 M1CTRL0=0x8000 M1PAGE=1 ${SUB_HWFLAGS:+HWFLAGS="$SUB_HWFLAGS"} > "$T/mode1.log" 2>&1 ) \
+  ( cd "$T/subcpu" && make clean > /dev/null && make CDROMPlayer.bin MODE1=1 M1CTRL0=0x8000 M1PAGE=1 ${EDCD_SAVE:+M1SAVE=$EDCD_SAVE} ${SUB_HWFLAGS:+HWFLAGS="$SUB_HWFLAGS${EDCD_SAVE:+ -DCART_EDSAVE}"} > "$T/mode1.log" 2>&1 ) \
     || { tail -20 "$T/mode1.log"; echo "*** the MODE1 Sub-CPU program did not build"; exit 1; }
   bash "$BC/edboot/build_edcd.sh" "$T/subcpu/CDROMPlayer.bin" "$HERE/cd32x/sh2/CDLOADER.32x" "$HERE/cd32x/subcpu/EDCD_SUPERTUX.32X"
   rm -rf "$T"
