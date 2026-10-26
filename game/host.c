@@ -140,6 +140,15 @@ int plat_save_piece(int piece)
 	memcpy(cart + 0x3F0000 + (uint32_t)(piece & 15) * 4096u, save_buf, 4096);
 	return 1;
 }
+/* ED-SAVE (port/plat_mars.c has the real one): on the SH2 a piece of page 1's save area may live in
+   the EverDrive's save bank and be read back through the Sub-CPU, so every reader goes through this
+   call instead of the cart window.  On the PC there is no bank - it is the simulated cart, which is
+   what plat_save_piece just wrote. */
+void plat_save_read(int piece, int off, uint8_t *dst, int n)
+{
+	const uint8_t *p = cart + 0x3F0000 + (uint32_t)(piece & 15) * 4096u + (uint32_t)off;
+	for (int i = 0; i < n; i++) dst[i] = p[i];
+}
 #endif
 
 int32_t plat_load_pack(int id, uint32_t off, uint32_t max)
