@@ -172,7 +172,7 @@ static void sdram_wait(volatile uint16_t *reg16, volatile int *flag, volatile in
 	masked = sr | 0xF0u;
 	__asm__ volatile ("ldc %0,sr" : : "r"(masked));
 	if (ack) *ack = 1;
-	for (int32_t n = 0; n < 8000000; n++) {
+	for (int32_t n = 0; n < 4000000; n++) {          /* OpenLara's csSpin bound, to the number */
 		if (reg16 ? *reg16 == 0 : *flag == 0) break;
 		for (volatile int32_t k = 0; k < 64; k++) {}    /* never hammer a COMM register */
 	}
