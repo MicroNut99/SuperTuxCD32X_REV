@@ -39,6 +39,7 @@ tag (`STX_VERSION` in `game/stx.h`):
 |---|---|---|---|
 | **REV11-T2** | `./build.sh` | 4 MB (the normal disc) | `SUPERTUX 0.1.3 - CD 32X - REV11-T2` |
 | **REV11-16MB-T1** | `CART_MB=16 ./build.sh` | 16 MB (MicroNut99/16MB-PCB-CD32X); also plays on 4 MB | `SUPERTUX REV11-16MB-T1 - CART 16 MB` |
+| **REV11-T2-X1** | `SPRITE_X1=1 ./build.sh` | 4 MB (with `CART_MB=...`: that build + `-X1`) | `SUPERTUX 0.1.3 - CD 32X - REV11-T2-X1` |
 
 ### What was done
 - **Even motion (REV11-T1, in both builds).** Tux stood still on the screen, but the level behind
@@ -52,6 +53,19 @@ tag (`STX_VERSION` in `game/stx.h`):
   (`tools/stx_pack.py --cart-mb 16`). On the first start the game copies every level from the
   disc into the cart (`game/cart.c cart_preload`). The size probe finds 4, 8 or 16 MB at every
   start; the cart page is switched with command 68 (below).
+- **Tux moves 1 pixel at a time (`SPRITE_X1=1`, off by default; 28 Oct 2026).** The 32X drew
+  every sprite at the even pixel at or left of its place (YATSSD's sprite loops write 2 pixels a
+  word), so Tux moved in 2-pixel steps over a level the Genesis scrolls 1 pixel at a time, and
+  while the view followed him he jumped 2 pixels back and forth every 6-7 frames. With
+  `SPRITE_X1=1` a sprite at an odd pixel goes through YATSSD's own 8-bit path (`DRAWSPR_PRECISE`,
+  `game/yt_layers.c yt_sprite`); even pixels keep the 16-bit loop. Tux's x on the screen is also
+  taken from the same halved camera position as the level (`game/tux.c tux_draw`), so the two no
+  longer round apart (that left a 1-pixel wobble). Measured in ares, level 1-1 holding Right:
+  the default build 2-pixel steps and the 2-pixel back-and-forth; `-X1` 1-pixel steps and Tux
+  still on the screen for all 133 frames the view followed him. Cost: 3 frames of 480 missed
+  their vblank there (the default build 0) - the 8-bit path is slower. Game code only, no boot
+  stack change; with the switch off the program is the same (only the build time stamp differs).
+  The build's name gets `-X1` (title, disc, zip).
 - **Found and checked in the emulator, not by console profiling:** MicroNut99/ares_android's
   headless runner models the RAM cart and the 16 MB board. It ran the real disc images, the game's
   own variables were read from 32X memory each frame, and every case below was run before a disc
@@ -483,6 +497,7 @@ console.
 | R11 | Options → Level Select (from the title): any of the 76 levels. |
 | **REV11-16MB-T1** | 16 MB cart: every level copied into the cart at the first start, no loading screens after; command 68 (cart page). |
 | **REV11-T1 / T2** | Even motion: the view moved 3, 5, 3 px a frame (the demo's jitter); the build's name on the title. |
+| **REV11-T2-X1** | `SPRITE_X1=1`: sprites at odd pixels too - Tux moves 1 px at a time and no longer jumps back and forth while the view follows him. |
 | **REV10** | The exit igloo, the tree, the statues - big pictures drawn whole; slower credits; small Tux in the title demo. |
 | **REV9** | Dithered 32X skies (no bands); 4 Genesis palettes for the level. |
 | **REV8** | The 32X's gradient skies behind the Genesis level (Sonic32X's way); the Genesis sky off. |

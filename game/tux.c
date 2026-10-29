@@ -262,7 +262,18 @@ void tux_action(void)
 void tux_draw(int cx, int cy, uint32_t ms, uint32_t frame)
 {
 	if (tux.safe_t && (frame % 2)) return;          /* blinking after a hit */
+#ifdef STX_SPRITE_X1
+	/* SPRITE_X1: the view is a whole pixel (cx = the camera's units / 2) and so is Tux - each rounded
+	 * down on its own, so while the view followed him Tux sat 1 pixel left or right of his place on
+	 * the screen, flipping every few frames (measured in ares). Taking the camera's odd unit off his
+	 * x rounds both the same way: he stays put on the screen while the view follows him (the level
+	 * under him may be 1 pixel off for those frames instead, which the eye, following Tux, does not
+	 * see). Off the level's edges (the view clamped) nothing changes. */
+	const int odd = FX_INT(scroll_x) - 2 * cx;
+	const int x = FX_INT(tux.x) - (odd == 1), y = FX_INT(tux.y);
+#else
 	const int x = FX_INT(tux.x), y = FX_INT(tux.y);
+#endif
 	if (tux.dying == DYING_SQUISHED) { spr_draw(S_SMALL_GAMEOVER, ms, x, y, cx, cy); return; }
 	const int base = tux.size == SMALL ? S_SMALL_WALK_L : tux.got_coffee ? S_FIRE_WALK_L : S_LARGE_WALK_L;
 	/* the sets are in the same order: walk, stand, jump (small: gameover), skid, kick, grab ... */

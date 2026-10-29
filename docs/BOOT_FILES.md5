@@ -7,6 +7,10 @@
 # because the EverDrive ignores the single even byte to 0xA130F2 the 16MB-PCB cart's page register wants.
 # ED-SAVE (26 Oct 2026): main.c CMD 61 writes the EverDrive's save bank under CART_EDSAVE (+ CMD 69, in the
 # STX_CART_PAGED block), plat_mars.c plat_save_read / ed_fetch, mars_syscalls.c reads through it - as Hurrican's b3e89c9.
+# d4086b1 + 7331023 (list updated 28 Oct 2026): those two commits changed boot files without updating this list, so
+# build.sh's boot check stopped every build - port/plat_mars.c's RV wait at OpenLara's 4,000,000 (d4086b1, the
+# owner's request, 26 Oct) and cd32x/sh2/cdloader_sh2.c's two bounded frame-buffer waits (7331023, from D32XR,
+# 27 Oct). The list now has those files as of those commits. Nothing else changed.
 e0954396dd5dc434e949aa69d8879b19  cd32x/ref/APP.BIN
 e90a268d465f0abe4da57539cb48ae94  cd32x/ref/APP_openlara.BIN
 2be6329407458fb27bc065d44fbbdaaf  cd32x/ref/cdl_crt0.s
@@ -44,7 +48,7 @@ c16160b8103b9b18e8b5e46348db2cb3  cd32x/ref/openlara/tools/make_sfx_packs.py
 2798acd453865044da42c9aeae918705  cd32x/sh2/Makefile.cdloader
 a5399fd233321a10693ea68b791f5ba8  cd32x/sh2/cdl_crt0.s
 122246bcd7c9050f5a661fbff63b471e  cd32x/sh2/cdloader.ld
-9fed4eb2313d38b6ef01a3fc7f000fdf  cd32x/sh2/cdloader_sh2.c
+99ac3780911c9e4b1cdce1e2142ce700  cd32x/sh2/cdloader_sh2.c
 083d99a3095f6cc4773904090db11596  cd32x/subcpu/Makefile
 c271aa2a6e7c52ee6ca3f180d0cd2c29  cd32x/subcpu/cd.ld
 0619262c9b3328d9290ddddac328d7f5  cd32x/subcpu/cd.s
@@ -73,7 +77,7 @@ cffda60791211a0faa10eaa7585eabe8  port/mars_syscalls.c
 e103ebf4a941106e4aa58666b88031bc  port/pack.c
 17400350a6e3535f2fe2c23af8beae2c  port/pack.h
 fbecdee402a51f7061f927dde85c527c  port/plat.h
-3dc9b7298ed3f044f5d59ebcdfa49479  port/plat_mars.c
+0bf00110a761fbef4de10c8582395b2a  port/plat_mars.c
 52d68454f0998a5c2e03b4d9b0834374  tools/make_boot_image.py
 818bdb43ae676ad3a8deffa31b7114ca  tools/make_oj_rom.py
 ab53af15dd1a6216ebb76cc183114621  tools/mars_boot.bin

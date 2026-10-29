@@ -78,6 +78,14 @@ esac
 # the disc, the title, the zip and the git tag carry the same
 VERSION=$(sed -n "s/^#define STX_VERSION_${CART_MB}MB *\"\(.*\)\"/\1/p" "$HERE/game/stx.h")
 [ -n "$VERSION" ] || { echo "*** no STX_VERSION_${CART_MB}MB in game/stx.h - stopping"; exit 1; }
+# SPRITE_X1=1 (off by default; the owner, 28 Oct 2026: "Tux is supposed to move smoothly across the
+# screen"): Tux, the bad guys and everything else the 32X draws go to any pixel instead of the even one
+# at or left of it (game/yt_layers.c yt_sprite, STX_SPRITE_X1) - they moved in 2-pixel steps over the
+# 1-pixel Genesis scrolling. The name gets -X1 (title, disc, zip). Game code only: no boot stack change.
+if [ -n "${SPRITE_X1:-}" ]; then
+  ENGINE_DEFS="$ENGINE_DEFS -DSTX_SPRITE_X1"
+  VERSION="$VERSION-X1"
+fi
 DISC=SuperTux$VERSION
 mkdir -p "$OUT" "$ROMS"
 

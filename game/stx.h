@@ -38,13 +38,20 @@
 /* the Mega EverDrive PRO: 16 MB, pages 1-6 (CD32X BootCamp docs/12) - its own line: build.sh reads the name with sed */
 #define STX_VERSION_EDMB "REV11-ED-T1"
 #if defined(STX_CART_ED)
-#define STX_VERSION STX_VERSION_EDMB
+#define STX_VERSION_CART STX_VERSION_EDMB
 #elif defined(STX_CART_MB) && STX_CART_MB == 16
-#define STX_VERSION STX_VERSION_16MB
+#define STX_VERSION_CART STX_VERSION_16MB
 #elif defined(STX_CART_MB) && STX_CART_MB == 8
-#define STX_VERSION STX_VERSION_8MB
+#define STX_VERSION_CART STX_VERSION_8MB
 #else
-#define STX_VERSION STX_VERSION_4MB
+#define STX_VERSION_CART STX_VERSION_4MB
+#endif
+/* SPRITE_X1=1 (build.sh): sprites at any pixel, not only even ones (game/yt_layers.c yt_sprite) -
+ * "-X1" after the build's name on the title, the disc and the zip */
+#ifdef STX_SPRITE_X1
+#define STX_VERSION STX_VERSION_CART "-X1"
+#else
+#define STX_VERSION STX_VERSION_CART
 #endif
 void game_wait_flip(void);             /* plat_wait_flip + the motion clock (game/game.c) */
 #include "pack.h"

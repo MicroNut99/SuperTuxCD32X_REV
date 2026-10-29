@@ -781,10 +781,26 @@ int yt_sprite(int vx, int vy, int w, int h, const uint8_t *pixels)
 	int x = vx + window_canvas_x + clip.x1;
 	const int l = line_of(vy + clip.y1);
 	int cw = w - (clip.x2 + clip.x1), ch = h - (clip.y2 + clip.y1);
+#ifdef STX_SPRITE_X1
+	/* SPRITE_X1=1 (the owner, 28 Oct 2026: "Tux is supposed to move smoothly"): Vic's 16-bit loops
+	 * write a word = 2 pixels, so a sprite went to the even pixel at or left of its place - Tux moved
+	 * on the 32X in 2-pixel steps over a level the Genesis scrolls 1 pixel at a time, and while the
+	 * view followed him he jumped back and forth 2 pixels against it every few frames (measured in
+	 * ares). At an odd pixel the sprite now goes through YATSSD's own 8-bit path (DRAWSPR_PRECISE):
+	 * its odd-x loop writes the first pixel, then words of two pixels shifted by one, then the last -
+	 * the same words as before plus two single bytes a line, the overwrite image keeping colour 0
+	 * see-through. Even pixels: the 16-bit loop as before. A picture of odd width stays on the even
+	 * pixel: that loop reads its lines as words and checks only the first line's address. */
+	cmd.flags = DRAWSPR_OVERWRITE;
+	if ((x & 1) && !(w & 1)) cmd.flags = DRAWSPR_OVERWRITE | DRAWSPR_PRECISE;
+	else { x &= ~1; cw &= ~1; }
+	if (cw < 8 || ch < 2) return 0;
+#else
 	x &= ~1;
 	cw &= ~1;
 	if (cw < 8 || ch < 2) return 0;
 	cmd.flags = DRAWSPR_OVERWRITE;
+#endif
 	cmd.x = (uint16_t)x;
 	cmd.w = (uint16_t)cw;
 	cmd.sx = (int16_t)clip.x1;
