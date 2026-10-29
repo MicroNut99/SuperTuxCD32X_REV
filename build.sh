@@ -59,6 +59,10 @@ MARKER="SH2-OPENLARA-CD-OL1-LOADER"
 #                                   (CART_EDSAVE, listener M1SAVE=1, RA header); the disc is the same either
 #                                   way (the game asks the Sub-CPU, CMD 69)
 # Without EDCD_SAVE the saves go to the cart's page 1, which the EverDrive wipes at its menu.
+#   EDCD_NAME=<name>                (with EDCD=1; the owner, 28 Oct 2026) the launcher is <name>.32X instead of
+#                                   EDCD_SUPERTUX.32X - a launcher of its own, so it never overwrites another
+#                                   one on the SD card; the EverDrive keeps its saves under that name
+#                                   (MEGA/gamedata/<name>.32X/bram.srm, a fresh save the first time)
 CART_MB=${CART_MB:-4}
 case "$CART_MB" in
   4)    PACK_ARGS=""; ENGINE_DEFS=""; SUB_HWFLAGS="" ;;
@@ -165,15 +169,16 @@ echo "    build/previews/            every level as the 32X will draw it"
 # of cd32x/subcpu: the disc keeps the normal program)
 if [ "${EDCD:-0}" = 1 ]; then
   BC="${BOOTCAMP:-$HERE/../CD32X-BootCamp}"
+  EDCD_32X="${EDCD_NAME:-EDCD_SUPERTUX}.32X"
   [ -f "$BC/edboot/build_edcd.sh" ] || { echo "*** EDCD=1 needs the CD32X BootCamp next to this folder (or BOOTCAMP=<folder>): not at $BC"; exit 1; }
-  echo "==> EDCD_SUPERTUX.32X: the disc started from the EverDrive PRO (cartridge boot)"
+  echo "==> $EDCD_32X: the disc started from the EverDrive PRO (cartridge boot)"
   T=$(mktemp -d); mkdir -p "$T/subcpu/ROMS" "$T/sh2"
   find "$HERE/cd32x/subcpu" -maxdepth 1 -type f -exec cp {} "$T/subcpu/" \;
   cp "$HERE/cd32x/sh2/CDLOADER.32x" "$T/sh2/"
   ( cd "$T/subcpu" && make clean > /dev/null && make CDROMPlayer.bin MODE1=1 M1CTRL0=0x8000 M1PAGE=1 ${EDCD_SAVE:+M1SAVE=$EDCD_SAVE} ${SUB_HWFLAGS:+HWFLAGS="$SUB_HWFLAGS${EDCD_SAVE:+ -DCART_EDSAVE}"} > "$T/mode1.log" 2>&1 ) \
     || { tail -20 "$T/mode1.log"; echo "*** the MODE1 Sub-CPU program did not build"; exit 1; }
-  bash "$BC/edboot/build_edcd.sh" "$T/subcpu/CDROMPlayer.bin" "$HERE/cd32x/sh2/CDLOADER.32x" "$HERE/cd32x/subcpu/EDCD_SUPERTUX.32X"
+  bash "$BC/edboot/build_edcd.sh" "$T/subcpu/CDROMPlayer.bin" "$HERE/cd32x/sh2/CDLOADER.32x" "$HERE/cd32x/subcpu/$EDCD_32X"
   rm -rf "$T"
-  echo "==> EDCD_SUPERTUX.32X: $HERE/cd32x/subcpu/EDCD_SUPERTUX.32X - copy it to the EverDrive's SD card and start it from the menu"
+  echo "==> $EDCD_32X: $HERE/cd32x/subcpu/$EDCD_32X - copy it to the EverDrive's SD card and start it from the menu"
   echo "    with the disc above in the Sega CD (not \"Run Mega-CD\")"
 fi

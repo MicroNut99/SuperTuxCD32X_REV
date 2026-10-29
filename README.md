@@ -40,6 +40,7 @@ tag (`STX_VERSION` in `game/stx.h`):
 | **REV11-T2** | `./build.sh` | 4 MB (the normal disc) | `SUPERTUX 0.1.3 - CD 32X - REV11-T2` |
 | **REV11-16MB-T1** | `CART_MB=16 ./build.sh` | 16 MB (MicroNut99/16MB-PCB-CD32X); also plays on 4 MB | `SUPERTUX REV11-16MB-T1 - CART 16 MB` |
 | **REV11-T2-X1** | `SPRITE_X1=1 ./build.sh` | 4 MB (with `CART_MB=...`: that build + `-X1`) | `SUPERTUX 0.1.3 - CD 32X - REV11-T2-X1` |
+| **REV11-ED-T1-X1** | `CART_MB=ED EDCD=1 EDCD_SAVE=1 SPRITE_X1=1 EDCD_NAME=SUPERTUX_EDCD_V1 ./build.sh` | Mega EverDrive PRO: the launcher `cd32x/subcpu/SUPERTUX_EDCD_V1.32X` started from its menu, the disc in the Sega CD | `SUPERTUX REV11-ED-T1-X1 - CART 16 MB` |
 
 ### What was done
 - **Even motion (REV11-T1, in both builds).** Tux stood still on the screen, but the level behind
