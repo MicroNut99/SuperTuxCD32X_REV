@@ -11,6 +11,8 @@ cd32x/subcpu/cd/
 cd32x/subcpu/*.iso
 cd32x/subcpu/*.bin
 cd32x/subcpu/*.cue
+# the EverDrive launchers (build.sh EDCD=1: EDCD_SUPERTUX.32X, EDCD_NAME=<name>.32X)
+cd32x/subcpu/*.32X
 discs/
 __pycache__/
 host/stx_host
